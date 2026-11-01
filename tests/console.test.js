@@ -18,3 +18,4 @@ test('console reports game state without mutating simulation',()=>{
  assert.equal(JSON.stringify(g),before);
  assert.equal(executeCommand('player',null).ok,false);
 });
+

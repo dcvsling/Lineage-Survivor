@@ -12,3 +12,4 @@ export function executeCommand(input, game) {
   if (command==='player') return {ok:true, message:`HP: ${Math.ceil(game.player.hp)}/${game.player.maxHp} | 速度: ${game.player.speed} | 座標: (${Math.round(game.player.x)}, ${Math.round(game.player.y)})`};
   return {ok:true, message:Object.entries(game.upgrades).filter(([,v])=>v>0).map(([k,v])=>`${k} +${v}`).join(' · ')||'尚未取得升級'};
 }
+
