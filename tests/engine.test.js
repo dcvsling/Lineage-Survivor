@@ -10,7 +10,7 @@ test('evolved ranger fires three arrows; mage and knight gain area',()=>{const g
 test('healing is limited and never wasted at full health or when paused',()=>{const g=new Engine();assert.equal(g.heal(),false);for(let i=0;i<3;i++){g.player.hp=1;assert.equal(g.heal(),true);}assert.equal(g.potions,0);assert.equal(g.heal(),false);const p=new Engine();p.player.hp=1;p.togglePause();assert.equal(p.heal(),false);});
 test('death is terminal, rewards stable, fresh run clean',()=>{const g=new Engine();g.kills=40;g.player.hp=1;g.hurt(50);assert.equal(g.status,'dead');const rewards=JSON.stringify(g.rewards);g.finish('victory');g.update(1);assert.equal(JSON.stringify(g.rewards),rewards);assert.equal(new Engine().time,0);assert.equal(new Engine().potions,3);assert.equal(g.rewards.drop.tier,1);});
 test('boss spawns once, death alone before dawn does not complete the run',()=>{const g=new Engine();g.time=419.99;g.update(.02);assert.equal(g.enemies.filter(e=>e.type==='boss').length,1);const boss=g.enemies.find(e=>e.type==='boss');g.hit(boss,100000);g.update(.05);assert.equal(g.status,'playing');assert.equal(g.bossDefeated,true);g.time=RUN_SECONDS-.01;g.update(.02);assert.equal(g.status,'victory');assert.equal(g.rewards.drop.tier,3);});
-test('ranged enemies fire hostile projectiles and invulnerability prevents frame damage',()=>{const g=new Engine();const e=g.spawn('ranged');e.shootTimer=0;g.update(.01);assert.ok(g.projectiles.some(p=>p.hostile));const hp=g.player.hp;g.hurt(10);g.hurt(10);assert.equal(g.player.hp,hp-10);});
+test('ranged enemies fire hostile projectiles and invulnerability prevents frame damage',()=>{const g=new Engine();const e=g.spawn('ranged');e.shootTimer=0;g.update(.01);assert.equal(g.projectiles.some(p=>p.hostile),false);tick(g,.6);assert.ok(g.projectiles.some(p=>p.hostile));const hp=g.player.hp;g.hurt(10);g.hurt(10);assert.equal(g.player.hp,hp-10);});
 test('same seed and inputs produce reproducible simulation',()=>{const a=new Engine('mage',{},42),b=new Engine('mage',{},42);for(let i=0;i<1800;i++){const input={x:Math.cos(i/100),y:Math.sin(i/100)};a.update(1/30,input);b.update(1/30,input);}assert.equal(JSON.stringify(a),JSON.stringify(b));});
 test('equipment affects runs but cannot exceed safe tier bounds',()=>{const g=new Engine('elf',{weapon:999,armor:3,boots:-1});assert.equal(g.equipment.weapon,5);assert.equal(g.equipment.boots,0);assert.equal(g.player.maxHp,135);});
 test('full eight-minute seeded simulation stays bounded and can finish',()=>{const g=new Engine('knight',{},99);g.player.hp=g.player.maxHp=100000;for(let i=0;i<480*30+10;i++){if(g.status==='upgrade')g.chooseUpgrade(g.choices.find(c=>c.id==='weapon')?.id||g.choices[0].id);g.update(1/30,{x:Math.cos(i/300),y:Math.sin(i/300)});assert.ok(g.enemies.length<=180);assert.ok(g.projectiles.length<=350);assert.ok(g.pickups.length<=600);if(g.status==='victory')break;}if(!g.bossDefeated){for(const b of g.enemies.filter(e=>e.type==='boss'))g.hit(b,100000);g.update(.1);}assert.equal(g.status,'victory');assert.ok(g.kills>100);assert.ok(g.damage.weapon>0);});
@@ -52,4 +52,48 @@ test('spawns never exceed 180 and scheduled boss reserves a slot at the cap',()=
 });
 test('invalid movement, class and equipment inputs remain finite and bounded',()=>{
   const g=new Engine('toString',{weapon:Infinity,armor:2.7,boots:NaN});assert.equal(g.classId,'knight');assert.equal(g.equipment.weapon,0);assert.equal(g.equipment.armor,2);assert.equal(g.equipment.boots,0);g.update(.1,{x:Infinity,y:NaN});g.update(.1,null);assert.equal(g.player.x,1200);assert.equal(g.player.y,1200);const hp=g.player.hp;g.hurt(NaN);g.hurt(-10);assert.equal(g.player.hp,hp);
+});
+test('ranged attack gives a full 0.6-second telegraph before any projectile',()=>{
+  const g=new Engine();g.spawnTimer=g.attackTimer=100;const e=g.spawn('ranged');e.x=g.player.x+250;e.y=g.player.y;e.shootTimer=.61;
+  g.update(.01);assert.equal(e.warning,.6);assert.equal(e.aimAngles.length,1);assert.equal(g.projectiles.length,0);
+  g.update(.25);g.update(.25);g.update(.09);assert.ok(e.warning>0);assert.equal(g.projectiles.length,0);
+  g.update(.01);assert.equal(e.warning,0);assert.equal(g.projectiles.filter(p=>p.hostile).length,1);assert.equal(e.shootTimer,2.9);assert.equal(g.projectiles[0].damage,e.damage);
+});
+test('telegraphed aim stays locked while the player sidesteps',()=>{
+  const g=new Engine();g.spawnTimer=g.attackTimer=100;const e=g.spawn('ranged');e.x=g.player.x+250;e.y=g.player.y;e.shootTimer=.6;
+  g.update(.01);const locked=e.aimAngle;g.player.y+=180;tick(g,.6);
+  assert.equal(e.aimAngle,locked);assert.ok(Math.abs(Math.atan2(g.player.y-e.y,g.player.x-e.x)-locked)>.1);
+  const shot=g.projectiles.find(p=>p.hostile);assert.ok(shot);assert.ok(Math.abs(shot.vx-Math.cos(locked)*165)<1e-9);assert.ok(Math.abs(shot.vy-Math.sin(locked)*165)<1e-9);
+});
+test('boss telegraph exactly predicts all nine spread projectiles and freezes on pause',()=>{
+  const g=new Engine();g.spawnTimer=g.attackTimer=100;const boss=g.spawn('boss');boss.x=g.player.x+300;boss.y=g.player.y;boss.shootTimer=.6;
+  g.update(.01);assert.equal(boss.aimAngles.length,9);const angles=[...boss.aimAngles];assert.ok(Math.abs(angles[8]-angles[0]-1.76)<1e-9);
+  g.togglePause();const before=JSON.stringify(g);tick(g,2);assert.equal(JSON.stringify(g),before);g.togglePause();tick(g,.6);
+  const shots=g.projectiles.filter(p=>p.hostile);assert.equal(shots.length,9);assert.equal(boss.shootTimer,2.2);shots.forEach((shot,i)=>{assert.ok(Math.abs(shot.vx-Math.cos(angles[i])*165)<1e-9);assert.ok(Math.abs(shot.vy-Math.sin(angles[i])*165)<1e-9);assert.equal(shot.damage,25);});
+});
+test('fresh ranged and boss spawns never begin with an invisible instant shot',()=>{
+  for(const type of ['ranged','boss']){const g=new Engine();g.spawnTimer=g.attackTimer=100;const e=g.spawn(type);assert.ok(e.shootTimer>=1);assert.equal(e.warning,0);assert.deepEqual(e.aimAngles,[]);g.update(.25);assert.equal(e.warning,0);assert.equal(g.projectiles.length,0);}
+});
+for(const scenario of ['contact','projectile','boss'])test(`terminal ${scenario} damage stops postmortem attacks and reward changes`,()=>{
+  const g=new Engine('elf');g.player.hp=1;g.spawnTimer=g.attackTimer=100;
+  const target=g.spawn(scenario==='boss'?'boss':'melee');target.x=g.player.x+100;target.y=g.player.y;const originalHp=target.hp;
+  if(scenario==='projectile')g.projectiles.push({x:g.player.x,y:g.player.y,vx:0,vy:0,radius:8,hostile:true,damage:10,life:1});
+  else{const contact=g.spawn('melee');contact.x=g.player.x;contact.y=g.player.y;}
+  g.projectiles.push({x:target.x,y:target.y,vx:0,vy:0,radius:8,hostile:false,damage:9999,life:1,kind:'elf',hitIds:[],pierce:1,blast:0});
+  g.update(.01);assert.equal(g.status,'dead');assert.equal(g.kills,0);assert.equal(target.hp,originalHp);assert.equal(g.damage.weapon,0);assert.equal(g.bossDefeated,false);assert.equal(g.rewards.gold,0);assert.equal(g.rewards.drop,undefined);
+  const frozen=JSON.stringify(g);g.update(10,{x:1,y:1});assert.equal(JSON.stringify(g),frozen);
+});
+test('uncoercible controls are safe and rejected abilities consume no cooldown',()=>{
+  for(const value of [Symbol('bad'),{valueOf(){throw new Error('bad coercion');}}]){
+    const g=new Engine('elf');const before=JSON.stringify(g);assert.equal(g.useAbility({x:value,y:0}),false);assert.equal(JSON.stringify(g),before);g.update(.01,{x:value,y:0});assert.equal(g.player.x,1200);assert.equal(g.player.y,1200);
+    assert.equal(new Engine('elf',{weapon:value}).equipment.weapon,0);
+  }
+});
+test('terminal early exit preserves projectile and effect memory caps',()=>{
+  const g=new Engine();g.player.hp=1;g.spawnTimer=g.attackTimer=100;
+  const boss=g.spawn('boss');boss.warning=.005;boss.aimAngles=Array.from({length:9},(_,i)=>i*.22);
+  const contact=g.spawn('melee');contact.x=g.player.x;contact.y=g.player.y;
+  g.projectiles=Array.from({length:350},()=>({x:0,y:0,vx:0,vy:0,radius:1,hostile:true,life:5,damage:1}));
+  g.effects=Array.from({length:150},()=>({type:'text',x:0,y:0,radius:0,life:1,maxLife:1,color:'#fff',text:'1'}));
+  g.update(.01);assert.equal(g.status,'dead');assert.equal(g.projectiles.length,350);assert.equal(g.effects.length,150);
 });

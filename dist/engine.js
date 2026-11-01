@@ -1,6 +1,7 @@
 /** Deterministic, DOM-free simulation. All distances are world pixels, all times seconds. */
 export const WORLD_SIZE = 2400;
 export const RUN_SECONDS = 480;
+export const ENEMY_WARNING_SECONDS = .6;
 export const CLASSES = {
   knight: {name:'騎士',weapon:'月鋼斬',description:'厚甲近戰・扇形斬擊・高生命',color:'#e8c27b',hp:150,speed:188},
   elf: {name:'遊俠',weapon:'風靈箭',description:'迅捷遠射・貫穿箭矢・高機動',color:'#8de0af',hp:105,speed:218},
@@ -23,12 +24,12 @@ export const UPGRADES = {
 };
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
 const distance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
-const axis=value=>Number.isFinite(Number(value))?clamp(Number(value),-1e6,1e6):0;
+const axis=value=>{try{const n=Number(value);return Number.isFinite(n)?clamp(n,-1e6,1e6):0;}catch{return 0;}};
 export class Engine {
   constructor(classId='knight',equipment={},seed=123456) {
     this.classId=Object.hasOwn(CLASSES,classId)?classId:'knight'; this.class=CLASSES[this.classId];
     this.seed=seed>>>0; this.equipment={weapon:0,armor:0,boots:0,...equipment};
-    for(const key of Object.keys(this.equipment)) this.equipment[key]=Number.isFinite(Number(this.equipment[key]))?Math.floor(clamp(Number(this.equipment[key]),0,5)):0;
+    for(const key of Object.keys(this.equipment)) this.equipment[key]=Math.floor(clamp(axis(this.equipment[key]),0,5));
     this.player={x:1200,y:1200,radius:13,hp:this.class.hp+this.equipment.armor*10,maxHp:this.class.hp+this.equipment.armor*10,speed:this.class.speed+this.equipment.boots*5,facing:0};
     this.status='playing'; this.time=0; this.level=1; this.xp=0; this.xpNext=12; this.kills=0; this.potions=3;
     this.enemies=[];this.projectiles=[];this.pickups=[];this.effects=[];this.choices=[];
@@ -42,13 +43,14 @@ export class Engine {
   heal(){if(this.status!=='playing'||this.potions<=0||this.player.hp>=this.player.maxHp)return false;this.potions--;this.player.hp=Math.min(this.player.maxHp,this.player.hp+this.player.maxHp*.45);this.effect('heal',this.player.x,this.player.y,45,'#8fffc1','治癒');return true;}
   useAbility(input={x:0,y:0}){
     if(this.status!=='playing'||this.abilityCooldown>0)return false;
+    let inputX,inputY;try{inputX=Number(input?.x??0);inputY=Number(input?.y??0);}catch{return false;}
     const p=this.player;
     this.abilityCooldown=this.ability.cooldown;this.abilityDuration=this.ability.duration;
     if(this.classId==='knight'){
       for(const e of this.enemies){if(e.hp<=0)continue;const dx=e.x-p.x,dy=e.y-p.y,d=Math.hypot(dx,dy);if(d<165+e.radius){const angle=d?Math.atan2(dy,dx):p.facing;const push=e.type==='boss'?35:110;e.x=clamp(e.x+Math.cos(angle)*push,15,2385);e.y=clamp(e.y+Math.sin(angle)*push,15,2385);}}
       this.effect('ward',p.x,p.y,165,this.ability.color);
     }else if(this.classId==='elf'){
-      const x=axis(input?.x),y=axis(input?.y),length=Math.hypot(x,y);
+      const x=axis(inputX),y=axis(inputY),length=Math.hypot(x,y);
       this.dashDirection=length?{x:x/length,y:y/length}:{x:Math.cos(p.facing),y:Math.sin(p.facing)};
       this.effect('dash',p.x,p.y,48,this.ability.color);
     }else{
@@ -70,7 +72,7 @@ export class Engine {
       let index=-1,far=-1;for(let i=0;i<this.enemies.length;i++){const e=this.enemies[i],d=distance(this.player,e);if(e.type!=='boss'&&d>far){index=i;far=d;}}
       if(index<0)return null;this.enemies.splice(index,1);
     }
-    const angle=this.random()*Math.PI*2;const r=460+this.random()*100;const scale=1+this.time/240;const data={melee:[24*scale,45+this.time/30,14,9],fast:[15*scale,93+this.time/35,10,7],ranged:[30*scale,36,13,10],boss:[2400,60,38,25]}[type];const e={id:this.nextId++,type,x:clamp(this.player.x+Math.cos(angle)*r,25,2375),y:clamp(this.player.y+Math.sin(angle)*r,25,2375),hp:data[0],maxHp:data[0],speed:data[1],radius:data[2],damage:data[3],shootTimer:1+this.random(),hit:0};this.enemies.push(e);return e;}
+    const angle=this.random()*Math.PI*2;const r=460+this.random()*100;const scale=1+this.time/240;const data={melee:[24*scale,45+this.time/30,14,9],fast:[15*scale,93+this.time/35,10,7],ranged:[30*scale,36,13,10],boss:[2400,60,38,25]}[type];const e={id:this.nextId++,type,x:clamp(this.player.x+Math.cos(angle)*r,25,2375),y:clamp(this.player.y+Math.sin(angle)*r,25,2375),hp:data[0],maxHp:data[0],speed:data[1],radius:data[2],damage:data[3],shootTimer:1+this.random(),warning:0,aimAngle:0,aimAngles:[],hit:0};this.enemies.push(e);return e;}
   hit(enemy,amount,source='weapon'){if(!enemy||enemy.hp<=0||!Number.isFinite(amount)||amount<=0)return;if(!Object.hasOwn(this.damage,source))source='weapon';const actual=Math.min(enemy.hp,amount);enemy.hp-=amount;enemy.hit=.12;this.damage[source]+=actual;this.effect('text',enemy.x,enemy.y-18,0,source==='weapon'?'#f7dfaa':'#bcb1ff',String(Math.round(amount)));if(enemy.hp<=0){this.kills++;this.pickups.push({x:enemy.x,y:enemy.y,value:enemy.type==='boss'?100:enemy.type==='ranged'?4:enemy.type==='fast'?2:3});if(enemy.type==='boss'){this.bossDefeated=true;this.effect('burst',enemy.x,enemy.y,130,'#f4ce79');}this.effect('death',enemy.x,enemy.y,enemy.radius+8,'#738e75');}}
   nearest(max=Infinity){let target=null,dist=max;for(const e of this.enemies){if(e.hp<=0)continue;const d=distance(this.player,e);if(d<dist){target=e;dist=d;}}return target;}
   attack(){const p=this.player;const target=this.nearest(680);if(!target)return;const power=(1+this.upgrades.weapon*.28)*(1+this.equipment.weapon*.08);const evolved=this.upgrades.weapon>=5;const angle=Math.atan2(target.y-p.y,target.x-p.x);p.facing=angle;
@@ -78,7 +80,7 @@ export class Engine {
     else {const count=this.classId==='elf'?(evolved?3:1):(evolved?2:1);for(let i=0;i<count;i++){const a=angle+(i-(count-1)/2)*.17;this.projectiles.push({x:p.x,y:p.y,vx:Math.cos(a)*(this.classId==='elf'?540:360),vy:Math.sin(a)*(this.classId==='elf'?540:360),radius:this.classId==='elf'?4:8,hostile:false,color:this.classId==='elf'?'#b9f1a2':'#d5a2ff',damage:(this.classId==='elf'?26:34)*power,life:2,kind:this.classId,targetId:target.id,hitIds:[],pierce:this.classId==='elf'?(evolved?5:2):1,blast:this.classId==='mage'?(evolved?110:76):0});}}
   }
   hurt(amount){if(this.status!=='playing'||this.hurtTimer>0||!Number.isFinite(amount)||amount<=0||(this.classId==='elf'&&this.abilityDuration>0))return;const reduction=this.classId==='knight'&&this.abilityDuration>0?.35:1;const n=Math.max(1,(amount-this.upgrades.armor*2-this.equipment.armor)*reduction);this.player.hp=Math.max(0,this.player.hp-n);this.hurtTimer=.65;this.effect('hurt',this.player.x,this.player.y,26,'#ff7474');if(this.player.hp<=0)this.finish('dead');}
-  finish(status){if(this.rewards)return;this.status=status;const tier=this.bossDefeated?3:this.time>=240?2:this.kills>=35?1:0;this.rewards={gold:Math.floor(this.kills*.8+this.time/4+(status==='victory'?200:0)),equipment:{...this.equipment}};if(tier){const slot=['weapon','armor','boots'][Math.floor(this.random()*3)];this.rewards.equipment[slot]=Math.max(tier,this.equipment[slot]);this.rewards.drop={slot,tier};}}
+  finish(status){if(this.rewards)return;this.status=status;this.projectiles=this.projectiles.slice(-350);this.effects=this.effects.slice(-150);const tier=this.bossDefeated?3:this.time>=240?2:this.kills>=35?1:0;this.rewards={gold:Math.floor(this.kills*.8+this.time/4+(status==='victory'?200:0)),equipment:{...this.equipment}};if(tier){const slot=['weapon','armor','boots'][Math.floor(this.random()*3)];this.rewards.equipment[slot]=Math.max(tier,this.equipment[slot]);this.rewards.drop={slot,tier};}}
   update(dt,input={x:0,y:0}){if(this.status!=='playing'||!Number.isFinite(dt)||dt<=0)return;let remaining=Math.min(dt,.25);while(remaining>0&&this.status==='playing'){const step=Math.min(remaining,1/30);this.step(step,input);remaining-=step;}}
   step(dt,input){this.time+=dt;const p=this.player;let ix=axis(input?.x),iy=axis(input?.y);const norm=Math.max(1,Math.hypot(ix,iy));const dashTime=this.classId==='elf'?Math.min(dt,this.abilityDuration):0;const walkTime=dt-dashTime;p.x=clamp(p.x+ix/norm*p.speed*walkTime+this.dashDirection.x*720*dashTime,20,2380);p.y=clamp(p.y+iy/norm*p.speed*walkTime+this.dashDirection.y*720*dashTime,20,2380);if(ix||iy)p.facing=Math.atan2(iy,ix);this.hurtTimer=Math.max(0,this.hurtTimer-dt);
     this.spawnTimer-=dt;if(this.spawnTimer<=0&&this.enemies.length<180){this.spawnTimer=Math.max(.12,.85-this.time/.72e3);const n=1+Math.floor(this.time/160);for(let i=0;i<n;i++){const r=this.random();this.spawn(this.time>60&&r<.2?'ranged':this.time>25&&r<.48?'fast':'melee');}}
@@ -86,8 +88,26 @@ export class Engine {
     this.attackTimer-=dt;if(this.attackTimer<=0){this.attackTimer=(this.classId==='knight'?.72:this.classId==='elf'?.65:1.05)*Math.pow(.88,this.upgrades.haste);this.attack();}
     this.orbTimer-=dt;if(this.upgrades.orb&&this.orbTimer<=0){this.orbTimer=.5;const range=this.upgrades.orb>=5?122:85;this.effect('orb',p.x,p.y,range,'#83d8d0');for(const e of this.enemies)if(distance(p,e)<range+e.radius)this.hit(e,5+this.upgrades.orb*5,'orb');}
     this.lightningTimer-=dt;if(this.upgrades.lightning&&this.lightningTimer<=0){this.lightningTimer=this.upgrades.lightning>=5?1.3:2;const targets=this.enemies.filter(e=>e.hp>0&&distance(p,e)<600).sort((a,b)=>distance(p,a)-distance(p,b)).slice(0,this.upgrades.lightning+1);for(const e of targets){this.hit(e,22+this.upgrades.lightning*12,'lightning');this.effect('lightning',e.x,e.y,30,'#9cbbff');}}
-    for(const e of this.enemies){if(e.hp<=0)continue;e.hit=Math.max(0,e.hit-dt);e.slowTimer=Math.max(0,(e.slowTimer||0)-dt);const slow=e.slowTimer>0?.4:1;const dx=p.x-e.x,dy=p.y-e.y,d=Math.hypot(dx,dy)||1;const approach=e.type==='ranged'?(d>260?1:d<170?-0.6:0):1;e.x=clamp(e.x+dx/d*e.speed*slow*approach*dt,15,2385);e.y=clamp(e.y+dy/d*e.speed*slow*approach*dt,15,2385);if(d<e.radius+p.radius)this.hurt(e.damage);if(e.type==='ranged'||e.type==='boss'){e.shootTimer-=dt;if(e.shootTimer<=0){e.shootTimer=e.type==='boss'?2.2:2.9;const count=e.type==='boss'?9:1;for(let i=0;i<count;i++){const angle=Math.atan2(dy,dx)+(i-(count-1)/2)*.22;this.projectiles.push({x:e.x,y:e.y,vx:Math.cos(angle)*165,vy:Math.sin(angle)*165,radius:6,hostile:true,color:'#f7946b',damage:e.damage,life:5});}}}}
-    for(const b of this.projectiles){if(b.kind==='mage'&&b.life>1.15){const target=this.enemies.find(e=>e.id===b.targetId&&e.hp>0);if(target){const angle=Math.atan2(target.y-b.y,target.x-b.x);b.vx+=(Math.cos(angle)*360-b.vx)*Math.min(1,dt*7);b.vy+=(Math.sin(angle)*360-b.vy)*Math.min(1,dt*7);}}b.x+=b.vx*dt;b.y+=b.vy*dt;b.life-=dt;if(b.hostile){if(distance(b,p)<b.radius+p.radius){this.hurt(b.damage);b.life=0;}}else{for(const e of this.enemies){if(e.hp<=0||b.hitIds.includes(e.id)||distance(b,e)>=b.radius+e.radius)continue;b.hitIds.push(e.id);if(b.blast){this.effect('burst',b.x,b.y,b.blast,'#ca9bfa');for(const target of this.enemies)if(distance(b,target)<b.blast+target.radius)this.hit(target,b.damage);}else this.hit(e,b.damage);b.pierce--;if(b.pierce<=0){b.life=0;break;}}}}
+    for(const e of this.enemies){if(e.hp<=0)continue;e.hit=Math.max(0,e.hit-dt);e.slowTimer=Math.max(0,(e.slowTimer||0)-dt);const slow=e.slowTimer>0?.4:1;const dx=p.x-e.x,dy=p.y-e.y,d=Math.hypot(dx,dy)||1;const approach=e.type==='ranged'?(d>260?1:d<170?-0.6:0):1;e.x=clamp(e.x+dx/d*e.speed*slow*approach*dt,15,2385);e.y=clamp(e.y+dy/d*e.speed*slow*approach*dt,15,2385);if(d<e.radius+p.radius){this.hurt(e.damage);if(this.status==='dead')return;}if(e.type==='ranged'||e.type==='boss'){
+      if(e.warning>0){
+        e.warning=Math.max(0,e.warning-dt);e.shootTimer=e.warning;
+        if(e.warning<=1e-9){
+          e.warning=0;e.shootTimer=e.type==='boss'?2.2:2.9;
+          for(const angle of e.aimAngles)this.projectiles.push({x:e.x,y:e.y,vx:Math.cos(angle)*165,vy:Math.sin(angle)*165,radius:6,hostile:true,color:'#f7946b',damage:e.damage,life:5});
+        }
+      }else{
+        e.shootTimer-=dt;
+        if(e.shootTimer<=ENEMY_WARNING_SECONDS){
+          // Start a full visible warning even if the timer was externally advanced.
+          // Lock the spread now: moving sideways during the warning evades the shot.
+          e.warning=ENEMY_WARNING_SECONDS;e.shootTimer=e.warning;
+          e.aimAngle=Math.atan2(p.y-e.y,p.x-e.x);
+          const count=e.type==='boss'?9:1;
+          e.aimAngles=Array.from({length:count},(_,i)=>e.aimAngle+(i-(count-1)/2)*.22);
+        }
+      }
+    }}
+    for(const b of this.projectiles){if(b.kind==='mage'&&b.life>1.15){const target=this.enemies.find(e=>e.id===b.targetId&&e.hp>0);if(target){const angle=Math.atan2(target.y-b.y,target.x-b.x);b.vx+=(Math.cos(angle)*360-b.vx)*Math.min(1,dt*7);b.vy+=(Math.sin(angle)*360-b.vy)*Math.min(1,dt*7);}}b.x+=b.vx*dt;b.y+=b.vy*dt;b.life-=dt;if(b.hostile){if(distance(b,p)<b.radius+p.radius){this.hurt(b.damage);b.life=0;if(this.status==='dead')return;}}else{for(const e of this.enemies){if(e.hp<=0||b.hitIds.includes(e.id)||distance(b,e)>=b.radius+e.radius)continue;b.hitIds.push(e.id);if(b.blast){this.effect('burst',b.x,b.y,b.blast,'#ca9bfa');for(const target of this.enemies)if(distance(b,target)<b.blast+target.radius)this.hit(target,b.damage);}else this.hit(e,b.damage);b.pierce--;if(b.pierce<=0){b.life=0;break;}}}}
     const magnet=105+this.upgrades.magnet*55;for(const gem of this.pickups){const d=distance(gem,p);if(d<magnet){const speed=300+Math.max(0,magnet-d)*3;gem.x+=(p.x-gem.x)/(d||1)*Math.min(d,speed*dt);gem.y+=(p.y-gem.y)/(d||1)*Math.min(d,speed*dt);}if(distance(gem,p)<20){this.xp+=gem.value;gem.collected=true;}}
     this.enemies=this.enemies.filter(e=>e.hp>0);this.projectiles=this.projectiles.filter(b=>b.life>0).slice(-350);this.pickups=this.pickups.filter(g=>!g.collected);if(this.pickups.length>600){const old=this.pickups.splice(0,this.pickups.length-500);const value=old.reduce((n,g)=>n+g.value,0);this.pickups.push({x:old[0].x,y:old[0].y,value});}
     for(const fx of this.effects)fx.life-=dt;this.effects=this.effects.filter(fx=>fx.life>0).slice(-150);
