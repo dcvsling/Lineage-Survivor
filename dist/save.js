@@ -28,26 +28,29 @@ function decode(text){if(text===null||text===undefined)return {ok:false,reason:'
 export function readSave(storage){
   try{
     const target=storage===undefined?globalThis.localStorage:storage;
-    const primary=decode(target.getItem(SAVE_KEY));
-    if(primary.ok)return {save:primary.save,storageOK:true,recovered:false,writeBlocked:false};
+    const snapshot=target.getItem(SAVE_KEY),primary=decode(snapshot);
+    if(primary.ok)return {save:primary.save,storageOK:true,recovered:false,writeBlocked:false,snapshot};
     // A future application's save is not corruption. Never silently downgrade it.
-    if(primary.reason==='version')return {save:defaultSave(),storageOK:false,recovered:false,writeBlocked:true,reason:'version'};
-    const backup=decode(target.getItem(BACKUP_KEY));
-    if(backup.ok)return {save:backup.save,storageOK:true,recovered:true,writeBlocked:false,reason:'backup'};
-    if(backup.reason==='version')return {save:defaultSave(),storageOK:false,recovered:false,writeBlocked:true,reason:'version'};
-    return {save:defaultSave(),storageOK:true,recovered:primary.reason!=='missing',writeBlocked:false,reason:primary.reason};
+    if(primary.reason==='version')return {save:defaultSave(),storageOK:false,recovered:false,writeBlocked:true,reason:'version',protectedRaw:snapshot,snapshot};
+    const backupRaw=target.getItem(BACKUP_KEY),backup=decode(backupRaw);
+    if(backup.ok)return {save:backup.save,storageOK:true,recovered:true,writeBlocked:false,reason:'backup',snapshot};
+    if(backup.reason==='version')return {save:defaultSave(),storageOK:false,recovered:false,writeBlocked:true,reason:'version',protectedRaw:backupRaw,snapshot};
+    return {save:defaultSave(),storageOK:true,recovered:primary.reason!=='missing',writeBlocked:false,reason:primary.reason,snapshot};
   }catch{return {save:defaultSave(),storageOK:false,recovered:false,writeBlocked:false,reason:'storage'};}
 }
-export function persistSave(raw,storage){
+export function persistSave(raw,storage,options={}){
   const valid=validateSave(raw),save=sanitizeSave(raw);
   if(!valid.ok)return {save,storageOK:false,writeBlocked:true,reason:valid.reason};
   try{
     const target=storage===undefined?globalThis.localStorage:storage;
-    const primary=decode(target.getItem(SAVE_KEY));
+    const snapshot=target.getItem(SAVE_KEY);
+    if(Object.hasOwn(options,'expectedRaw')&&snapshot!==options.expectedRaw)return {save,storageOK:false,writeBlocked:true,reason:'conflict'};
+    const primary=decode(snapshot);
     if(primary.reason==='version')return {save,storageOK:false,writeBlocked:true,reason:'version'};
     // Preserve last known-good primary. Corrupt primary may not poison a recoverable backup.
     if(primary.ok)target.setItem(BACKUP_KEY,JSON.stringify(primary.save));
     else {const backup=decode(target.getItem(BACKUP_KEY));if(backup.reason==='version')return {save,storageOK:false,writeBlocked:true,reason:'version'};if(!backup.ok)target.setItem(BACKUP_KEY,JSON.stringify(save));}
+    if(Object.hasOwn(options,'expectedRaw')&&target.getItem(SAVE_KEY)!==options.expectedRaw)return {save,storageOK:false,writeBlocked:true,reason:'conflict'};
     target.setItem(SAVE_KEY,JSON.stringify(save));
     return {save,storageOK:true,writeBlocked:false};
   }catch{return {save,storageOK:false,writeBlocked:false,reason:'storage'};}

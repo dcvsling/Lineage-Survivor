@@ -34,7 +34,7 @@ function verify(g,label){
 try{
   for(const classId of classes)for(const seed of seeds){
     const g=new Engine(classId,{},seed),began=performance.now(),max=Object.fromEntries(Object.keys(limits).map(key=>[key,0]));
-    for(let frame=0;frame<600*30&&!['dead','victory'].includes(g.status);frame++){
+    for(let frame=0;frame<480*30+1&&!['dead','victory','retreat'].includes(g.status);frame++){
       if(g.status==='upgrade')g.chooseUpgrade([...g.choices].sort((a,b)=>priority.indexOf(a.id)-priority.indexOf(b.id))[0].id);
       if(g.player.hp<g.player.maxHp*.45)g.heal();
       const input=inputFor(g);if(g.abilityCooldown===0)g.useAbility(input);g.update(1/30,input);
@@ -42,9 +42,10 @@ try{
       for(const key in max)max[key]=Math.max(max[key],g[key].length);
       if(frame%1000===0)sampledHeap=Math.max(sampledHeap,process.memoryUsage().heapUsed);
     }
+    assert.ok(g.rewards,`${classId}/${seed}: did not reach an outcome by deadline`);
     if(g.rewards){const frozen=JSON.stringify(g);g.update(100,{x:1,y:1});assert.equal(JSON.stringify(g),frozen,'terminal state changed after update');}
     const result={class:classId,seed,status:g.status,timeSeconds:+g.time.toFixed(2),kills:g.kills,level:g.level,hp:+g.player.hp.toFixed(2),potions:g.potions,bossDefeated:g.bossDefeated,max,runtimeMs:Math.round(performance.now()-began)};
     results.push(result);console.log(JSON.stringify(result));
   }
-  console.log(JSON.stringify({result:'PASS: invariants held',runs:results.length,wins:results.filter(r=>r.status==='victory').length,deaths:results.filter(r=>r.status==='dead').length,observationWindowEnded:results.filter(r=>r.status==='playing').length,elapsedMs:Math.round(performance.now()-start),sampledHeapPeakMiB:+(sampledHeap/1048576).toFixed(2),limits,note:'600-second observation window; bot death or unfinished run is not an invariant failure. Heap is sampled Node heap usage, not browser/device memory.'}));
+  console.log(JSON.stringify({result:'PASS: invariants held',runs:results.length,wins:results.filter(r=>r.status==='victory').length,deaths:results.filter(r=>r.status==='dead').length,retreats:results.filter(r=>r.status==='retreat').length,observationWindowEnded:results.filter(r=>r.status==='playing').length,elapsedMs:Math.round(performance.now()-start),sampledHeapPeakMiB:+(sampledHeap/1048576).toFixed(2),limits,note:'480-second bounded run; bot death or retreat is not an invariant failure. Heap is sampled Node heap usage, not browser/device memory.'}));
 }catch(error){console.error('SOAK INVARIANT FAILURE:',error);process.exitCode=1;}
