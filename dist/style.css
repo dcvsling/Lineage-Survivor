@@ -13,3 +13,5 @@
 /* Extreme-short view / browser zoom: retain movement, healing, skill and pause. */
 @media(max-height:400px){body.playing header{display:none}.hud-top{top:8px}.run-info{top:64px}#boss{top:85px}.hud-bottom{bottom:0}#skills{display:none}#heal,.touch-controls #heal{bottom:24px;padding:10px}#ability,.touch-controls #ability{position:absolute;bottom:90px;right:0;margin:0;padding:10px}#joystick{bottom:24px;width:70px;height:70px}#joystick div{width:32px;height:32px;left:18px;top:18px}}
 .save-warning{border:1px solid #c08f58;background:#402d20aa;padding:12px;color:#f0c99a!important}#toast{max-width:calc(100vw - 32px);width:max-content;text-align:center;line-height:1.6}
+
+.evolution-choice{border-color:var(--gold);background:#3a3424}.build-summary dl{margin:14px 0 0}.build-summary dt{color:#dccc9e;font-weight:bold;margin-top:12px}.build-summary dd{margin:4px 0 0;color:#b4c0ab;overflow-wrap:anywhere}
