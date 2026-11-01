@@ -21,7 +21,7 @@ test('snapshot guard rejects stale writes and optimistic fallback labels its lim
  const result=await transactSave({type:'forge',slot:'boots'},first.save,{storage,locks:null});assert.equal(result.ok,true);assert.equal(result.concurrency,'optimistic');assert.equal(result.save.gold,400);
 });
 test('protected future primary and backup expose original raw and refuse imports',async()=>{
- for(const key of [SAVE_KEY,BACKUP_KEY]){const storage=memory(),raw='{"version":2,"gold":9000}';storage.setItem(key,raw);
+ for(const key of [SAVE_KEY,BACKUP_KEY]){const storage=memory(),raw='{"version":3,"gold":9000}';storage.setItem(key,raw);
  assert.equal(readSave(storage).protectedRaw,raw);const result=await transactSave({type:'import',save:defaultSave()},defaultSave(),{storage,locks:null});assert.equal(result.ok,false);assert.equal(result.writeBlocked,true);assert.equal(storage.getItem(key),raw);}
 });
 test('quota errors are explicit memory-only and subsequent memory operations preserve progress',async()=>{
@@ -71,4 +71,33 @@ test('successful lock request clears timeout and cannot run its callback a secon
  const locks={request(name,options,fn){callback=fn;signal=options.signal;return Promise.resolve(fn());}};
  const result=await transactSave({type:'forge',slot:'weapon'},save,{storage,locks,lockTimeoutMs:5});assert.equal(result.ok,true);
  await new Promise(resolve=>setTimeout(resolve,10));assert.equal(signal.aborted,false);callback();assert.equal(readSave(storage).save.gold,400);assert.equal(readSave(storage).save.equipment.weapon,1);
+});
+test('relic selection uses latest eligibility and stale settlement and forge preserve selection',async()=>{
+ const storage=memory(),locks=fakeLocks(),stale={...defaultSave(),gold:1000,best:0};persistSave(stale,storage);
+ await transactSave({type:'settle',rewards:{gold:0},time:60,won:false},stale,{storage,locks});
+ const selected=await transactSave({type:'relic',id:'compass'},stale,{storage,locks});assert.equal(selected.ok,true);assert.equal(selected.save.relic,'compass');assert.equal(selected.save.gold,1000);
+ const [settled,bought]=await Promise.all([transactSave({type:'settle',rewards:{gold:50,equipment:stale.equipment},time:35,won:false},stale,{storage,locks}),transactSave({type:'forge',slot:'weapon'},stale,{storage,locks})]);
+ assert.equal(settled.save.relic,'compass');assert.equal(bought.save.relic,'compass');assert.equal(readSave(storage).save.relic,'compass');assert.equal(readSave(storage).save.gold,950);
+});
+test('relic transaction rejects locked and unknown requests without mutation or fee',async()=>{
+ const storage=memory(),save={...defaultSave(),best:59.99,gold:400};persistSave(save,storage);const snapshot=storage.getItem(SAVE_KEY);
+ for(const id of ['ward','hourglass','compass','unknown',null,1]){const result=await transactSave({type:'relic',id},save,{storage,locks:null});assert.equal(result.ok,false);assert.deepEqual(result.save,save);assert.equal(storage.getItem(SAVE_KEY),snapshot);}
+ assert.equal((await transactSave({type:'relic',id:'none'},save,{storage,locks:null})).ok,true);
+});
+test('relic selection storage failure is truthfully memory-only and preserved in later operations',async()=>{
+ const backing=memory(),save={...defaultSave(),best:60,gold:200};persistSave(save,backing);
+ const storage={getItem:backing.getItem,setItem(){throw Error('quota');}};
+ const selected=await transactSave({type:'relic',id:'hourglass'},save,{storage,locks:null});assert.equal(selected.ok,true);assert.equal(selected.storageOK,false);assert.equal(selected.memoryOnly,true);assert.match(selected.message,/記憶體/);assert.equal(readSave(backing).save.relic,'none');
+ const settled=await transactSave({type:'settle',rewards:{gold:25},time:20,won:false},selected.save,{storage,locks:null,memoryOnly:true});assert.equal(settled.save.relic,'hourglass');assert.equal(settled.save.gold,225);
+});
+test('future relic prevents transactional replacement and preserves raw',async()=>{
+ const storage=memory(),raw=JSON.stringify({...defaultSave(),best:60,relic:'future-ward'});storage.setItem(SAVE_KEY,raw);
+ const result=await transactSave({type:'relic',id:'none'},defaultSave(),{storage,locks:null});assert.equal(result.ok,false);assert.equal(result.writeBlocked,true);assert.equal(result.protectedRaw,raw);assert.equal(storage.getItem(SAVE_KEY),raw);
+});
+test('failed v1 migration write retains exact original primary and backup with truthful memory-only result',async()=>{
+ const backing=memory(),raw='{ "version":1, "equipment":{"weapon":2,"armor":1,"boots":0}, "gold":500, "best":65, "wins":1, "legacyNote":"preserve" }';backing.setItem(SAVE_KEY,raw);
+ const storage={getItem:backing.getItem,setItem(key,value){if(key===SAVE_KEY)throw Error('quota');backing.setItem(key,value);}};
+ const result=await transactSave({type:'relic',id:'ward'},readSave(storage).save,{storage,locks:null});
+ assert.equal(result.ok,true);assert.equal(result.storageOK,false);assert.equal(result.memoryOnly,true);assert.equal(result.save.version,2);assert.equal(result.save.relic,'ward');assert.match(result.message,/記憶體/);
+ assert.equal(backing.getItem(SAVE_KEY),raw);assert.equal(backing.getItem(BACKUP_KEY),raw);assert.equal(readSave(backing).save.gold,500);assert.equal(readSave(backing).save.equipment.weapon,2);
 });

@@ -27,3 +27,18 @@ test('passive summaries match applied engine stats and keep multiplicative haste
 test('safe ranks, unknown identifiers, and maxed descriptions are stable',()=>{
   assert.equal(upgradeInfo('knight','toString',4),null);assert.equal(upgradeInfo('knight',Symbol(),0),null);assert.equal(skillName('mage','bad',4),'未知祝福');for(const bad of [NaN,Infinity,Symbol(),{},-4])assert.equal(upgradeInfo('bad','weapon',bad).currentLevel,0);assert.equal(upgradeInfo('knight','weapon',2.8).currentLevel,2);const max=upgradeInfo('knight','weapon',999);assert.equal(max.currentLevel,5);assert.equal(max.nextLevel,5);assert.equal(max.maxed,true);assert.equal(max.evolves,false);assert.match(max.description,/已滿階/);assert.equal(buildSummary(null).find(e=>e.id==='weapon').name,'月鋼斬');
 });
+
+test('relic-aware summary and pickup previews match real run state',()=>{
+ for(const classId of ['knight','elf','mage'])for(const relicId of ['none','ward','compass','hourglass']){
+  const g=new Engine(classId,{weapon:2,armor:2,boots:2},7,relicId);
+  g.upgrades.vitality=2;g.player.maxHp+=50;g.upgrades.speed=2;g.player.speed=(g.class.speed+10)*1.18*(relicId==='ward'?.92:1);g.upgrades.magnet=2;
+  const entries=buildSummary(g),by=id=>entries.find(e=>e.id===id);
+  assert.equal(by('vitality').stats.maxHp,g.player.maxHp);
+  assert.equal(by('speed').stats.speed,g.player.speed);
+  assert.equal(by('magnet').stats.range,g.pickupRadius);
+  assert.equal(upgradeInfo(classId,'magnet',2,g).current.range,g.pickupRadius);
+  assert.equal(upgradeInfo(classId,'magnet',2,g).next.range,g.pickupRadius+55);
+  assert.match(by('ability').description,new RegExp(String(g.ability.cooldown)));
+  assert.ok(by('relic').description.length>10);
+ }
+});

@@ -1,3 +1,4 @@
+import {normalizeRelic,relicUnlocked} from './relics.js';
 import {readSave,persistSave,sanitizeSave,validateSave} from './save.js';
 import {forge} from './progression.js';
 const LOCK_NAME='lineage-survivor-save';
@@ -46,6 +47,11 @@ export async function transactSave(operation,currentMemory,options={}){
 function applyOperation(op,base){
   if(!object(op))return {ok:false,save:base,message:'無效的傳承操作。'};
   if(op.type==='forge')return forge(base,op.slot);
+  if(op.type==='relic'){
+    if(typeof op.id!=='string'||normalizeRelic(op.id)!==op.id)return {ok:false,save:base,message:'未知的傳承遺物，未變更裝備。'};
+    if(op.id!=='none'&&!relicUnlocked(base))return {ok:false,save:base,message:'單次遠征存活滿 60 秒後才能裝備遺物。'};
+    const save=sanitizeSave(base);save.relic=op.id;return {ok:true,save,message:op.id==='none'?'已卸下傳承遺物。':'傳承遺物已裝備，下次遠征生效。'};
+  }
   if(op.type==='import'){
     const valid=validateSave(op.save);
     return valid.ok?{ok:true,save:valid.save,message:'傳承已匯入。'}:{ok:false,save:base,message:'匯入存檔無效或版本不相容，未變更傳承。'};

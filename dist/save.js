@@ -1,21 +1,24 @@
-/** Local-only progress. v1 remains compatible; backups never replace a valid save with corrupt data. */
+import {normalizeRelic,relicUnlocked} from './relics.js';
+/** Local-only v2 progress. The original storage key remains stable; legacy v1 reads migrate without writes. */
 export const SAVE_KEY='lineage-survivor-v1';
 export const BACKUP_KEY=SAVE_KEY+'-backup';
-export const SAVE_VERSION=1;
-export function defaultSave(){return {version:SAVE_VERSION,equipment:{weapon:0,armor:0,boots:0},gold:0,best:0,wins:0};}
+export const SAVE_VERSION=2;
+export function defaultSave(){return {version:SAVE_VERSION,equipment:{weapon:0,armor:0,boots:0},gold:0,best:0,wins:0,relic:'none'};}
 function number(value,max,integer=true){if(typeof value!=='number'||!Number.isFinite(value))return 0;const bounded=Math.min(max,Math.max(0,value));return integer?Math.floor(bounded):bounded;}
 const object=value=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 export function sanitizeSave(raw){
   const save=defaultSave();
-  if(!object(raw)||(raw.version!==undefined&&raw.version!==SAVE_VERSION))return save;
+  if(!object(raw)||(raw.version!==undefined&&raw.version!==1&&raw.version!==SAVE_VERSION))return save;
   for(const slot of ['weapon','armor','boots'])save.equipment[slot]=number(raw.equipment?.[slot],5);
   save.gold=number(raw.gold,1e12);save.best=number(raw.best,86400,false);save.wins=number(raw.wins,1e9);
+  save.relic=relicUnlocked(save)?normalizeRelic(raw.relic):'none';
   return save;
 }
 /** Strict at file/import boundaries: never silently turn malformed data into a replacement save. */
 export function validateSave(raw){
   if(!object(raw))return {ok:false,reason:'invalid'};
-  if(raw.version!==undefined&&raw.version!==SAVE_VERSION)return {ok:false,reason:'version'};
+  if(raw.version!==undefined&&raw.version!==1&&raw.version!==SAVE_VERSION)return {ok:false,reason:'version'};
+  if(raw.relic!==undefined){if(typeof raw.relic!=='string')return {ok:false,reason:'invalid'};if(normalizeRelic(raw.relic)!==raw.relic)return {ok:false,reason:'version'};if(raw.relic!=='none'&&!relicUnlocked(raw))return {ok:false,reason:'invalid'};}
   if(!object(raw.equipment))return {ok:false,reason:'invalid'};
   const limits={weapon:5,armor:5,boots:5,gold:1e12,best:86400,wins:1e9};
   for(const [key,max] of Object.entries(limits)){
@@ -48,7 +51,7 @@ export function persistSave(raw,storage,options={}){
     const primary=decode(snapshot);
     if(primary.reason==='version')return {save,storageOK:false,writeBlocked:true,reason:'version'};
     // Preserve last known-good primary. Corrupt primary may not poison a recoverable backup.
-    if(primary.ok)target.setItem(BACKUP_KEY,JSON.stringify(primary.save));
+    if(primary.ok)target.setItem(BACKUP_KEY,snapshot);
     else {const backup=decode(target.getItem(BACKUP_KEY));if(backup.reason==='version')return {save,storageOK:false,writeBlocked:true,reason:'version'};if(!backup.ok)target.setItem(BACKUP_KEY,JSON.stringify(save));}
     if(Object.hasOwn(options,'expectedRaw')&&target.getItem(SAVE_KEY)!==options.expectedRaw)return {save,storageOK:false,writeBlocked:true,reason:'conflict'};
     target.setItem(SAVE_KEY,JSON.stringify(save));

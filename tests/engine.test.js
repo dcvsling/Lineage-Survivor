@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {Engine, CLASSES, RUN_SECONDS, outcomeSummary} from '../dist/engine.js';
+import {Engine, CLASSES, ABILITIES, RUN_SECONDS, outcomeSummary} from '../dist/engine.js';
 const tick=(g,seconds,input={x:0,y:0})=>{for(let i=0;i<seconds*30;i++)g.update(1/30,input);};
 test('three classes have distinct durability, movement, and attacks',()=>{for(const id of Object.keys(CLASSES)){const g=new Engine(id);const enemy=g.spawn('melee');enemy.x=g.player.x+60;enemy.y=g.player.y;g.attack();if(id==='knight')assert.ok(enemy.hp<enemy.maxHp);else assert.equal(g.projectiles[0].kind,id);}assert.ok(new Engine('knight').player.hp>new Engine('elf').player.hp);assert.ok(new Engine('elf').player.speed>new Engine('mage').player.speed);});
 test('movement normalized and clamped; invalid delta does not corrupt state',()=>{const a=new Engine(),b=new Engine();a.spawnTimer=b.spawnTimer=100;tick(a,1,{x:1,y:0});tick(b,1,{x:1,y:1});assert.ok(Math.abs(Math.hypot(a.player.x-1200,a.player.y-1200)-Math.hypot(b.player.x-1200,b.player.y-1200))<.001);a.player.x=2380;a.update(.1,{x:1,y:0});assert.equal(a.player.x,2380);a.update(NaN);assert.ok(Number.isFinite(a.time));});
@@ -113,4 +113,30 @@ test('contact death records cause and boss defeat does not prevent an early deat
 test('projectile death explanation distinguishes enemy source and gives evasion advice',()=>{
   const g=new Engine();g.player.hp=2;g.hurt(25,{enemyType:'boss',kind:'projectile'});assert.deepEqual(g.deathCause,{enemyType:'boss',kind:'projectile',damage:2});const text=outcomeSummary(g);assert.match(text.reason,/暮林君王/);assert.match(text.reason,/飛射攻擊/);assert.match(text.advice,/橫向/);
   const retreat=new Engine();retreat.finish('retreat');assert.match(outcomeSummary(retreat).reason,/尚未被擊倒/);assert.match(outcomeSummary(retreat).advice,/沒有勝利加成/);
+});
+test('no relic preserves baseline and malformed choices fall back without unsafe state',()=>{
+  const baseline=new Engine('knight',{armor:2},42),explicit=new Engine('knight',{armor:2},42,'none');assert.deepEqual(baseline,explicit);
+  for(const bad of ['bad','toString',null,undefined,{},Symbol('bad')]){const g=new Engine('knight',{armor:2},42,bad);assert.equal(g.relicId,'none');assert.equal(g.player.maxHp,170);assert.equal(g.player.speed,188);assert.equal(g.potions,3);assert.equal(g.pickupRadius,105);}
+});
+test('relic selection and adjusted ability are immutable snapshots, not shared config changes',()=>{
+  const before=JSON.stringify(ABILITIES);for(const c of ['knight','elf','mage']){const g=new Engine(c,{},1,'hourglass');assert.equal(g.ability.cooldown,ABILITIES[c].cooldown*.75);assert.equal(g.potions,2);assert.equal(g.useAbility(),true);assert.equal(g.abilityCooldown,g.ability.cooldown);assert.notEqual(g.ability,ABILITIES[c]);assert.throws(()=>{g.relicId='none';},TypeError);assert.throws(()=>{g.ability.cooldown=0;},TypeError);assert.equal(g.relicId,'hourglass');}
+  assert.equal(JSON.stringify(ABILITIES),before);assert.equal(new Engine().ability.cooldown,12);
+});
+test('ward consumes one real hostile projectile, records no blocked damage, and then cools down',()=>{
+  const g=new Engine('knight',{},1,'ward');g.spawnTimer=g.attackTimer=100;const enemy=g.spawn('ranged');enemy.shootTimer=.6;g.update(.01);tick(g,.6);const shot=g.projectiles.find(p=>p.hostile);assert.ok(shot);shot.x=g.player.x;shot.y=g.player.y;shot.vx=shot.vy=0;const hp=g.player.hp;g.update(.01);assert.equal(g.player.hp,hp);assert.equal(g.relicCooldown,8);assert.equal(g.lastHit,null);assert.equal(g.deathCause,null);assert.equal(g.projectiles.includes(shot),false);
+  g.projectiles.push({...shot,life:1});g.update(.01);assert.equal(g.player.hp,hp-10);assert.equal(g.lastHit.kind,'projectile');assert.ok(g.relicCooldown<8);g.relicCooldown=.001;g.update(.01);assert.equal(g.relicCooldown,0);
+});
+test('ward never wastes charge on contact, damage invulnerability, dash or invalid damage',()=>{
+  const g=new Engine('elf',{},1,'ward');g.hurt(7,{enemyType:'fast',kind:'contact'});assert.equal(g.relicCooldown,0);g.hurt(10,{enemyType:'ranged',kind:'projectile'});assert.equal(g.relicCooldown,0);g.hurtTimer=0;g.useAbility({x:1,y:0});g.hurt(10,{enemyType:'ranged',kind:'projectile'});assert.equal(g.relicCooldown,0);g.abilityDuration=0;for(const amount of [0,-1,NaN,Infinity])g.hurt(amount,{enemyType:'ranged',kind:'projectile'});assert.equal(g.relicCooldown,0);g.hurt(10,{enemyType:'ranged',kind:'projectile'});assert.equal(g.relicCooldown,8);
+});
+test('ward speed penalty persists through speed upgrades and includes boots',()=>{
+  const g=new Engine('elf',{boots:3},1,'ward');assert.equal(g.player.speed,(218+15)*.92);g.status='upgrade';g.choices=[{id:'speed'}];g.chooseUpgrade('speed');assert.equal(g.player.speed,(218+15)*1.09*.92);
+});
+test('compass rounds initial health after armor, retains full vitality gains, and attracts farther gems',()=>{
+  const g=new Engine('elf',{armor:1},1,'compass');assert.equal(g.player.maxHp,98);assert.equal(g.player.hp,98);g.status='upgrade';g.choices=[{id:'vitality'}];g.chooseUpgrade('vitality');assert.equal(g.player.maxHp,123);assert.equal(g.player.hp,123);assert.equal(g.pickupRadius,205);g.upgrades.magnet=1;assert.equal(g.pickupRadius,260);
+  const normal=new Engine(),compass=new Engine('knight',{},1,'compass');for(const run of [normal,compass]){run.spawnTimer=100;run.pickups.push({x:run.player.x+180,y:run.player.y,value:1});run.update(.1);}assert.equal(normal.pickups[0].x,1380);assert.ok(compass.pickups[0].x<1380);
+});
+test('relic cooldown freezes in every inactive state and resets on a fresh run',()=>{
+  for(const status of ['paused','upgrade','dead','victory','retreat']){const g=new Engine('knight',{},1,'ward');g.relicCooldown=4;g.status=status;const before=JSON.stringify(g);g.update(.25);g.hurt(10,{kind:'projectile'});assert.equal(JSON.stringify(g),before);}
+  const fresh=new Engine('knight',{},1,'ward');assert.equal(fresh.relicCooldown,0);assert.equal(fresh.potions,3);
 });

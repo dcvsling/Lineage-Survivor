@@ -1,3 +1,4 @@
+import {normalizeRelic} from './relics.js';
 /** Deterministic, DOM-free simulation. All distances are world pixels, all times seconds. */
 export const WORLD_SIZE = 2400;
 export const RUN_SECONDS = 480;
@@ -39,18 +40,22 @@ const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
 const distance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
 const axis=value=>{try{const n=Number(value);return Number.isFinite(n)?clamp(n,-1e6,1e6):0;}catch{return 0;}};
 export class Engine {
-  constructor(classId='knight',equipment={},seed=123456) {
+  constructor(classId='knight',equipment={},seed=123456,relicId='none') {
+    Object.defineProperty(this,'relicId',{value:normalizeRelic(relicId),enumerable:true});this.relicCooldown=0;
     this.classId=Object.hasOwn(CLASSES,classId)?classId:'knight'; this.class=CLASSES[this.classId];
     this.seed=seed>>>0; this.equipment={weapon:0,armor:0,boots:0,...equipment};
     for(const key of Object.keys(this.equipment)) this.equipment[key]=Math.floor(clamp(axis(this.equipment[key]),0,5));
     this.player={x:1200,y:1200,radius:13,hp:this.class.hp+this.equipment.armor*10,maxHp:this.class.hp+this.equipment.armor*10,speed:this.class.speed+this.equipment.boots*5,facing:0};
-    this.status='playing'; this.time=0; this.level=1; this.xp=0; this.xpNext=12; this.kills=0; this.potions=3;
+    if(this.relicId==='compass'){this.player.maxHp=Math.round(this.player.maxHp*.85);this.player.hp=this.player.maxHp;}
+    if(this.relicId==='ward')this.player.speed*=.92;
+    this.status='playing'; this.time=0; this.level=1; this.xp=0; this.xpNext=12; this.kills=0; this.potions=this.relicId==='hourglass'?2:3;
     this.enemies=[];this.projectiles=[];this.pickups=[];this.effects=[];this.choices=[];
     this.upgrades=Object.fromEntries(Object.keys(UPGRADES).map(k=>[k,0])); this.damage={weapon:0,orb:0,lightning:0,ability:0};
-    this.ability=ABILITIES[this.classId];this.abilityCooldown=0;this.abilityDuration=0;this.dashDirection={x:1,y:0};
+    this.ability=Object.freeze({...ABILITIES[this.classId],cooldown:ABILITIES[this.classId].cooldown*(this.relicId==='hourglass'?.75:1)});this.abilityCooldown=0;this.abilityDuration=0;this.dashDirection={x:1,y:0};
     this.attackTimer=0;this.spawnTimer=0.4;this.orbTimer=0;this.lightningTimer=2;this.hurtTimer=0;this.nextId=1;
     this.bossSpawned=false;this.bossDefeated=false;this.rewards=null;this.lastHit=null;this.deathCause=null;
   }
+  get pickupRadius(){return 105+this.upgrades.magnet*55+(this.relicId==='compass'?100:0);}
   random(){let a=this.seed+=0x6D2B79F5; a=Math.imul(a^a>>>15,a|1);a^=a+Math.imul(a^a>>>7,a|61);return ((a^a>>>14)>>>0)/4294967296;}
   togglePause(){if(this.status==='playing')this.status='paused';else if(this.status==='paused')this.status='playing';return this.status;}
   heal(){if(this.status!=='playing'||this.potions<=0||this.player.hp>=this.player.maxHp)return false;this.potions--;this.player.hp=Math.min(this.player.maxHp,this.player.hp+this.player.maxHp*.45);this.effect('heal',this.player.x,this.player.y,45,'#8fffc1','治癒');return true;}
@@ -75,7 +80,7 @@ export class Engine {
   effect(type,x,y,radius,color,text=''){this.effects.push({type,x,y,radius,color,text,life:type==='text'?0.65:0.3,maxLife:type==='text'?0.65:0.3});}
   rollChoices(){const pool=Object.keys(UPGRADES).filter(id=>this.upgrades[id]<UPGRADES[id].max);for(let i=pool.length-1;i>0;i--){const j=Math.floor(this.random()*(i+1));[pool[i],pool[j]]=[pool[j],pool[i]];}return pool.slice(0,3).map(id=>({id,...UPGRADES[id],level:this.upgrades[id]+1}));}
   checkLevel(){if(this.xp>=this.xpNext){this.xp-=this.xpNext;this.level++;this.xpNext=Math.round(12+this.level*5+this.level*this.level*.22);this.choices=this.rollChoices();if(this.choices.length)this.status='upgrade';else {this.player.hp=Math.min(this.player.maxHp,this.player.hp+15);this.checkLevel();}}}
-  chooseUpgrade(id){if(this.status!=='upgrade'||!this.choices.some(c=>c.id===id))return false;this.upgrades[id]++;if(id==='vitality'){this.player.maxHp+=25;this.player.hp=Math.min(this.player.maxHp,this.player.hp+35);}if(id==='speed')this.player.speed=(this.class.speed+this.equipment.boots*5)*(1+this.upgrades.speed*.09);this.status='playing';this.choices=[];this.checkLevel();return true;}
+  chooseUpgrade(id){if(this.status!=='upgrade'||!this.choices.some(c=>c.id===id))return false;this.upgrades[id]++;if(id==='vitality'){this.player.maxHp+=25;this.player.hp=Math.min(this.player.maxHp,this.player.hp+35);}if(id==='speed')this.player.speed=(this.class.speed+this.equipment.boots*5)*(1+this.upgrades.speed*.09)*(this.relicId==='ward'?.92:1);this.status='playing';this.choices=[];this.checkLevel();return true;}
   spawn(type){
     if(!['melee','fast','ranged','boss'].includes(type))return null;
     if(this.enemies.length>=180){
@@ -92,10 +97,10 @@ export class Engine {
     if(this.classId==='knight'){const range=evolved?172:126;this.effect('slash',p.x,p.y,range,'#f6d891');for(const e of this.enemies){if(distance(p,e)<range+e.radius)this.hit(e,23*power);}}
     else {const count=this.classId==='elf'?(evolved?3:1):(evolved?2:1);for(let i=0;i<count;i++){const a=angle+(i-(count-1)/2)*.17;this.projectiles.push({x:p.x,y:p.y,vx:Math.cos(a)*(this.classId==='elf'?540:360),vy:Math.sin(a)*(this.classId==='elf'?540:360),radius:this.classId==='elf'?4:8,hostile:false,color:this.classId==='elf'?'#b9f1a2':'#d5a2ff',damage:(this.classId==='elf'?26:34)*power,life:2,kind:this.classId,targetId:target.id,hitIds:[],pierce:this.classId==='elf'?(evolved?5:2):1,blast:this.classId==='mage'?(evolved?110:76):0});}}
   }
-  hurt(amount,source={enemyType:'unknown',kind:'contact'}){if(this.status!=='playing'||this.hurtTimer>0||!Number.isFinite(amount)||amount<=0||(this.classId==='elf'&&this.abilityDuration>0))return;const reduction=this.classId==='knight'&&this.abilityDuration>0?.35:1;const n=Math.max(1,(amount-this.upgrades.armor*2-this.equipment.armor)*reduction);const actual=Math.min(this.player.hp,n);this.player.hp=Math.max(0,this.player.hp-n);this.lastHit={enemyType:Object.hasOwn(ENEMY_NAMES,source?.enemyType)?source.enemyType:'unknown',kind:source?.kind==='projectile'?'projectile':'contact',damage:actual};this.hurtTimer=.65;this.effect('hurt',this.player.x,this.player.y,26,'#ff7474');if(this.player.hp<=0){this.deathCause={...this.lastHit};this.finish('dead');}}
+  hurt(amount,source={enemyType:'unknown',kind:'contact'}){if(this.status!=='playing'||this.hurtTimer>0||!Number.isFinite(amount)||amount<=0||(this.classId==='elf'&&this.abilityDuration>0))return;if(this.relicId==='ward'&&source?.kind==='projectile'&&this.relicCooldown<=0){this.relicCooldown=8;this.effect('ward',this.player.x,this.player.y,48,'#9de7ff','護符格擋');return;}const reduction=this.classId==='knight'&&this.abilityDuration>0?.35:1;const n=Math.max(1,(amount-this.upgrades.armor*2-this.equipment.armor)*reduction);const actual=Math.min(this.player.hp,n);this.player.hp=Math.max(0,this.player.hp-n);this.lastHit={enemyType:Object.hasOwn(ENEMY_NAMES,source?.enemyType)?source.enemyType:'unknown',kind:source?.kind==='projectile'?'projectile':'contact',damage:actual};this.hurtTimer=.65;this.effect('hurt',this.player.x,this.player.y,26,'#ff7474');if(this.player.hp<=0){this.deathCause={...this.lastHit};this.finish('dead');}}
   finish(status){if(this.rewards)return;this.status=status;this.projectiles=this.projectiles.slice(-350);this.effects=this.effects.slice(-150);const tier=this.bossDefeated?3:this.time>=240?2:this.kills>=35?1:0;this.rewards={gold:Math.floor(this.kills*.8+this.time/4+(status==='victory'?200:0)),equipment:{...this.equipment}};if(tier){const slot=['weapon','armor','boots'][Math.floor(this.random()*3)];this.rewards.equipment[slot]=Math.max(tier,this.equipment[slot]);this.rewards.drop={slot,tier};}}
   update(dt,input={x:0,y:0}){if(this.status!=='playing'||!Number.isFinite(dt)||dt<=0)return;if(this.time>=RUN_SECONDS){this.time=RUN_SECONDS;this.finish(this.bossDefeated?'victory':'retreat');return;}let remaining=Math.min(dt,.25,RUN_SECONDS-this.time);while(remaining>0&&this.status==='playing'){const step=Math.min(remaining,1/30);this.step(step,input);remaining-=step;}}
-  step(dt,input){this.time=Math.min(RUN_SECONDS,this.time+dt);const p=this.player;let ix=axis(input?.x),iy=axis(input?.y);const norm=Math.max(1,Math.hypot(ix,iy));const dashTime=this.classId==='elf'?Math.min(dt,this.abilityDuration):0;const walkTime=dt-dashTime;p.x=clamp(p.x+ix/norm*p.speed*walkTime+this.dashDirection.x*720*dashTime,20,2380);p.y=clamp(p.y+iy/norm*p.speed*walkTime+this.dashDirection.y*720*dashTime,20,2380);if(ix||iy)p.facing=Math.atan2(iy,ix);this.hurtTimer=Math.max(0,this.hurtTimer-dt);
+  step(dt,input){this.relicCooldown=Math.max(0,this.relicCooldown-dt);this.time=Math.min(RUN_SECONDS,this.time+dt);const p=this.player;let ix=axis(input?.x),iy=axis(input?.y);const norm=Math.max(1,Math.hypot(ix,iy));const dashTime=this.classId==='elf'?Math.min(dt,this.abilityDuration):0;const walkTime=dt-dashTime;p.x=clamp(p.x+ix/norm*p.speed*walkTime+this.dashDirection.x*720*dashTime,20,2380);p.y=clamp(p.y+iy/norm*p.speed*walkTime+this.dashDirection.y*720*dashTime,20,2380);if(ix||iy)p.facing=Math.atan2(iy,ix);this.hurtTimer=Math.max(0,this.hurtTimer-dt);
     this.spawnTimer-=dt;if(this.spawnTimer<=0&&this.enemies.length<180){this.spawnTimer=Math.max(.12,.85-this.time/.72e3);const n=1+Math.floor(this.time/160);for(let i=0;i<n;i++){const r=this.random();this.spawn(this.time>60&&r<.2?'ranged':this.time>25&&r<.48?'fast':'melee');}}
     if(!this.bossSpawned&&this.time>=420){this.bossSpawned=true;this.spawn('boss');this.effect('text',p.x,p.y-80,0,'#ffb48c','古森君王降臨');}
     this.attackTimer-=dt;if(this.attackTimer<=0){this.attackTimer=(this.classId==='knight'?.72:this.classId==='elf'?.65:1.05)*Math.pow(.88,this.upgrades.haste);this.attack();}
@@ -121,7 +126,7 @@ export class Engine {
       }
     }}
     for(const b of this.projectiles){if(b.kind==='mage'&&b.life>1.15){const target=this.enemies.find(e=>e.id===b.targetId&&e.hp>0);if(target){const angle=Math.atan2(target.y-b.y,target.x-b.x);b.vx+=(Math.cos(angle)*360-b.vx)*Math.min(1,dt*7);b.vy+=(Math.sin(angle)*360-b.vy)*Math.min(1,dt*7);}}b.x+=b.vx*dt;b.y+=b.vy*dt;b.life-=dt;if(b.hostile){if(distance(b,p)<b.radius+p.radius){this.hurt(b.damage,{enemyType:b.enemyType,kind:'projectile'});b.life=0;if(this.status==='dead')return;}}else{for(const e of this.enemies){if(e.hp<=0||b.hitIds.includes(e.id)||distance(b,e)>=b.radius+e.radius)continue;b.hitIds.push(e.id);if(b.blast){this.effect('burst',b.x,b.y,b.blast,'#ca9bfa');for(const target of this.enemies)if(distance(b,target)<b.blast+target.radius)this.hit(target,b.damage);}else this.hit(e,b.damage);b.pierce--;if(b.pierce<=0){b.life=0;break;}}}}
-    const magnet=105+this.upgrades.magnet*55;for(const gem of this.pickups){const d=distance(gem,p);if(d<magnet){const speed=300+Math.max(0,magnet-d)*3;gem.x+=(p.x-gem.x)/(d||1)*Math.min(d,speed*dt);gem.y+=(p.y-gem.y)/(d||1)*Math.min(d,speed*dt);}if(distance(gem,p)<20){this.xp+=gem.value;gem.collected=true;}}
+    const magnet=this.pickupRadius;for(const gem of this.pickups){const d=distance(gem,p);if(d<magnet){const speed=300+Math.max(0,magnet-d)*3;gem.x+=(p.x-gem.x)/(d||1)*Math.min(d,speed*dt);gem.y+=(p.y-gem.y)/(d||1)*Math.min(d,speed*dt);}if(distance(gem,p)<20){this.xp+=gem.value;gem.collected=true;}}
     this.enemies=this.enemies.filter(e=>e.hp>0);this.projectiles=this.projectiles.filter(b=>b.life>0).slice(-350);this.pickups=this.pickups.filter(g=>!g.collected);if(this.pickups.length>600){const old=this.pickups.splice(0,this.pickups.length-500);const value=old.reduce((n,g)=>n+g.value,0);this.pickups.push({x:old[0].x,y:old[0].y,value});}
     for(const fx of this.effects)fx.life-=dt;this.effects=this.effects.filter(fx=>fx.life>0).slice(-150);
     this.abilityCooldown=Math.max(0,this.abilityCooldown-dt);this.abilityDuration=Math.max(0,this.abilityDuration-dt);
