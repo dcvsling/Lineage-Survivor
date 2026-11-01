@@ -8,7 +8,9 @@ export class Renderer {
  c.fillStyle='#554f361e';c.fillRect(1120,0,90,2400);c.fillRect(0,1160,2400,70);for(let i=0;i<14;i++){let a=i*Math.PI/7;const x=1200+Math.cos(a)*180,y=1200+Math.sin(a)*180;c.fillStyle='#3c493f';c.fillRect(x-6,y-12,12,22);c.fillStyle='#64705a';c.fillRect(x-5,y-12,10,3);c.fillStyle='#a0b68655';c.fillRect(x-1,y-7,2,8);}
  c.strokeStyle='#9d795544';c.lineWidth=5;c.strokeRect(5,5,2390,2390);
  for(const tree of this.trees)if(Math.abs(tree.x-cx)<rx&&Math.abs(tree.y-cy)<ry)this.tree(tree.x,tree.y,tree.s);
- for(const enemy of game?.enemies||[])if(enemy.warning>0&&Math.abs(enemy.x-cx)<rx&&Math.abs(enemy.y-cy)<ry)this.telegraph(enemy);
+ // Warning rays may cross the viewport even when their shooter is offscreen.
+ // The simulation caps enemies at 180, so draw every active warning and let Canvas clip.
+ for(const enemy of game?.enemies||[])if(enemy.warning>0)this.telegraph(enemy);
  for(const item of game?.pickups||[]){c.fillStyle='#75deb2';c.beginPath();c.moveTo(item.x,item.y-4);c.lineTo(item.x+3,item.y);c.lineTo(item.x,item.y+5);c.lineTo(item.x-3,item.y);c.fill();}
  const chars=[...(game?.enemies||[]).map(e=>({...e,enemy:true})),{...p,type:game?.classId||'knight',hero:true,hit:game?.hurtTimer||0,evolved:game?.upgrades?.weapon>=5}].sort((a,b)=>a.y-b.y);for(const q of chars){if(Math.abs(q.x-cx)>rx||Math.abs(q.y-cy)>ry)continue;this.character(q,t);}
  if(game?.abilityDuration>0){c.strokeStyle=game.ability.color;c.lineWidth=3;c.globalAlpha=.65;c.beginPath();c.arc(p.x,p.y,game.classId==='knight'?32:22,0,Math.PI*2);c.stroke();c.globalAlpha=1;}

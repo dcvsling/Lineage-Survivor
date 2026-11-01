@@ -5,6 +5,7 @@ import {Renderer} from './renderer.js';
 import {readSave,exportSave,importSave,SAVE_KEY} from './save.js';
 import {forgeCost} from './progression.js';
 import {transactSave} from './save-transactions.js';
+import {createProgressQueue} from './progress-queue.js';
 import {JoystickState,acceptsGameplayKey} from './input.js';
 import {executeCommand} from './console.js';
 const $=id=>document.getElementById(id);
@@ -12,7 +13,7 @@ let {save,storageOK,recovered,writeBlocked,reason:recoveryReason,protectedRaw}=r
 let memoryOnly=!storageOK&&!writeBlocked,settlementResult=null,panelEpoch=0,modalSaving=false;
 const slotNames={weapon:'武器',armor:'鎧甲',boots:'戰靴'},icons={knight:'⚔',elf:'➶',mage:'✧'};let tutorialSeen=save.best>0;let selected='knight',game=null,lastStatus='',lastLevel=0,claimed=false,audioOn=false,audioCtx;
 const renderer=new Renderer($('world')),keys=new Set(),stick=new JoystickState();
-async function applyProgress(operation){const result=await transactSave(operation,save,{memoryOnly});if(result.ok)save=result.save;storageOK=result.storageOK;writeBlocked=!!result.writeBlocked;memoryOnly=!!result.memoryOnly;protectedRaw=result.protectedRaw||readSave().protectedRaw;campInfo();return result;}
+const applyProgress=createProgressQueue(async operation=>{const result=await transactSave(operation,save,{memoryOnly});if(result.ok)save=result.save;storageOK=result.storageOK;writeBlocked=!!result.writeBlocked;memoryOnly=!!result.memoryOnly;protectedRaw=result.protectedRaw||readSave().protectedRaw;campInfo();return result;});
 function campInfo(){$('equipment').textContent=Object.entries(save.equipment).map(([k,v])=>`${slotNames[k]} ${v?'＋'+v:'—'}`).join('　');$('relic').textContent='遺物 · '+RELICS[normalizeRelic(save.relic)].name;$('save-note').textContent=storageOK?`本機傳承 · 最長 ${format(save.best)} · 勝利 ${save.wins} 次 · ${save.gold} 金幣`:writeBlocked?'偵測到較新版存檔：此版停止寫入，請先備份':'本頁進度尚未儲存；關閉前請匯出備份';}
 function classes(){$('classes').replaceChildren(...Object.entries(CLASSES).map(([id,c])=>{const b=document.createElement('button');b.className='class-card'+(id===selected?' selected':'');b.setAttribute('aria-pressed',String(id===selected));b.innerHTML=`<span class="icon">${icons[id]}</span><b>${c.name}</b><small>${c.weapon}<br>${id==='knight'?'近戰・厚甲生存':id==='elf'?'遠程・迅捷貫穿':'法術・範圍爆破'}</small>`;b.onclick=()=>{selected=id;classes();};return b;}));$('profession-note').textContent=`${ABILITIES[selected].name} · ${ABILITIES[selected].description}（空白鍵 / 職業技按鈕）`;}
 function toast(text){$('toast').textContent=text;$('toast').style.opacity=1;clearTimeout(toast.timer);toast.timer=setTimeout(()=>$('toast').style.opacity=0,2800);}
