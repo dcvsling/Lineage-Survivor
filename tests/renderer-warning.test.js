@@ -8,7 +8,7 @@ test('portrait viewport retains active warning rays from offscreen shooters',()=
  try{
   globalThis.window={addEventListener(){}};globalThis.innerWidth=390;globalThis.innerHeight=844;
   const ctx=new Proxy({}, {get:(target,key)=>key in target?target[key]:(()=>{}),set:(target,key,value)=>(target[key]=value,true)});
-  const renderer=new Renderer({getContext:()=>ctx}),game=new Engine('elf');
+  const renderer=new Renderer({getContext:()=>ctx},{createCanvas:()=>({getContext:()=>ctx})}),game=new Engine('elf');
   const boss=game.spawn('boss');
   // Portrait half-width is 162.5 world units. The old center-only cull threshold
   // was 262.5: this shooter's 370-unit leftward warning crosses the entire player.
