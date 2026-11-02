@@ -8,7 +8,7 @@ test('renderer supports narrow/wide screens and every enemy, warning and evoluti
  try{globalThis.window={addEventListener(){}};for(const width of [390,1188]){
   globalThis.innerWidth=width;globalThis.innerHeight=750;let calls=0;
   const ctx=new Proxy({}, {get(target,key){if(key in target)return target[key];return (...args)=>{calls++;for(const value of args)if(typeof value==='number')assert.ok(Number.isFinite(value),String(key));};},set(target,key,value){target[key]=value;return true;}});
-  const canvas={getContext:()=>ctx};const renderer=new Renderer(canvas);
+  const canvas={getContext:()=>ctx};const renderer=new Renderer(canvas,{createCanvas:()=>({getContext:()=>ctx})});
   for(const classId of ['knight','elf','mage']){const g=new Engine(classId);g.upgrades.weapon=5;g.upgrades.orb=5;g.abilityDuration=.2;g.hurtTimer=.2;
    for(const type of ['melee','fast','ranged','boss']){const e=g.spawn(type);e.x=g.player.x+40;e.y=g.player.y+50;e.hp/=2;e.hit=.1;e.slowTimer=1;if(['ranged','boss'].includes(type)){e.warning=.3;e.aimAngle=.5;e.aimAngles=type==='boss'?Array.from({length:9},(_,i)=>.5+(i-4)*.22):[.5];}}
    renderer.render(g,1);renderer.render(g,1.2);

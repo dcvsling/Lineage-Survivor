@@ -1,9 +1,10 @@
+import {TileGround} from './tiles.js';
 // All art is generated from original geometric pixel primitives. No third-party assets.
 export class Renderer {
- constructor(canvas){this.canvas=canvas;this.ctx=canvas.getContext('2d');this.resize();window.addEventListener('resize',()=>this.resize());this.trees=Array.from({length:220},(_,i)=>({x:(Math.sin(i*731+3)*.5+.5)*2400,y:(Math.cos(i*337+1)*.5+.5)*2400,s:0.7+(i%5)*.16}));}
+ constructor(canvas,{createCanvas}={}){this.canvas=canvas;this.ctx=canvas.getContext('2d');this.ground=new TileGround(createCanvas?{createCanvas}:{});this.resize();window.addEventListener('resize',()=>this.resize());this.trees=Array.from({length:220},(_,i)=>({x:(Math.sin(i*731+3)*.5+.5)*2400,y:(Math.cos(i*337+1)*.5+.5)*2400,s:0.7+(i%5)*.16}));}
  resize(){this.w=innerWidth;this.h=innerHeight;this.canvas.width=Math.ceil(this.w/2);this.canvas.height=Math.ceil(this.h/2);this.ctx.imageSmoothingEnabled=false;}
  render(game,t){const c=this.ctx,w=this.canvas.width,h=this.canvas.height;const p=game?.player||{x:1070+Math.sin(t*.03)*100,y:1100};const scale=innerWidth<700?.6:.72;const cx=p.x,cy=p.y;c.setTransform(1,0,0,1,0,0);c.fillStyle='#14251c';c.fillRect(0,0,w,h);c.save();c.translate(w/2,h/2);c.scale(scale,scale);c.translate(-cx,-cy);
- const rx=w/scale/2+100,ry=h/scale/2+100;for(let x=Math.floor((cx-rx)/40)*40;x<cx+rx;x+=40)for(let y=Math.floor((cy-ry)/40)*40;y<cy+ry;y+=40){const n=Math.abs(Math.sin(x*12.98+y*78.23));c.fillStyle=n>.7?'#1b3022':'#182b20';c.fillRect(x,y,39,39);if(n>.8){c.fillStyle='#345039';c.fillRect(x+7,y+15,2,5);c.fillRect(x+10,y+12,2,7);}if(n<.09){c.fillStyle='#344438';c.fillRect(x+13,y+20,9,5);c.fillStyle='#435043';c.fillRect(x+15,y+18,5,2);}}
+ const rx=w/scale/2+100,ry=h/scale/2+100;this.ground.draw(c,cx-rx,cy-ry,cx+rx,cy+ry);
  // Ancient road and ruined ritual stones.
  c.fillStyle='#554f361e';c.fillRect(1120,0,90,2400);c.fillRect(0,1160,2400,70);for(let i=0;i<14;i++){let a=i*Math.PI/7;const x=1200+Math.cos(a)*180,y=1200+Math.sin(a)*180;c.fillStyle='#3c493f';c.fillRect(x-6,y-12,12,22);c.fillStyle='#64705a';c.fillRect(x-5,y-12,10,3);c.fillStyle='#a0b68655';c.fillRect(x-1,y-7,2,8);}
  c.strokeStyle='#9d795544';c.lineWidth=5;c.strokeRect(5,5,2390,2390);
