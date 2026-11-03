@@ -1,4 +1,5 @@
 import {normalizeRelic} from './relics.js';
+import {ComponentWorld,createPlayerEntity} from './ecs.js';
 /** Deterministic, DOM-free simulation. All distances are world pixels, all times seconds. */
 export const WORLD_SIZE = 2400;
 export const RUN_SECONDS = 480;
@@ -45,7 +46,18 @@ export class Engine {
     this.classId=Object.hasOwn(CLASSES,classId)?classId:'knight'; this.class=CLASSES[this.classId];
     this.seed=seed>>>0; this.equipment={weapon:0,armor:0,boots:0,...equipment};
     for(const key of Object.keys(this.equipment)) this.equipment[key]=Math.floor(clamp(axis(this.equipment[key]),0,5));
-    this.player={x:1200,y:1200,radius:13,hp:this.class.hp+this.equipment.armor*10,maxHp:this.class.hp+this.equipment.armor*10,speed:this.class.speed+this.equipment.boots*5,facing:0};
+    // ECS components own player data while existing combat and renderer APIs
+    // continue to use game.player (a live, serializable compatibility view).
+    const ecs=new ComponentWorld();
+    const {id,player}=createPlayerEntity(ecs,{
+      x:1200,y:1200,radius:13,
+      hp:this.class.hp+this.equipment.armor*10,
+      maxHp:this.class.hp+this.equipment.armor*10,
+      speed:this.class.speed+this.equipment.boots*5,facing:0
+    });
+    Object.defineProperty(this,'ecs',{value:ecs});
+    Object.defineProperty(this,'playerEntityId',{value:id});
+    this.player=player;
     if(this.relicId==='compass'){this.player.maxHp=Math.round(this.player.maxHp*.85);this.player.hp=this.player.maxHp;}
     if(this.relicId==='ward')this.player.speed*=.92;
     this.status='playing'; this.time=0; this.level=1; this.xp=0; this.xpNext=12; this.kills=0; this.potions=this.relicId==='hourglass'?2:3;
