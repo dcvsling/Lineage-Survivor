@@ -38,13 +38,13 @@ test('legacy player view and ECS components share the same authoritative values'
   player.speed *= 1.09;
   assert.equal(vitals.hp,75);
   assert.equal(position.x,1203);
-  assert.equal(movement.speed,218);
+  assert.ok(Math.abs(movement.speed - 218) < 1e-9);
   vitals.maxHp = 160;
   movement.facing = 1.5;
   assert.equal(player.maxHp,160);
   assert.equal(player.facing,1.5);
   assert.deepEqual(JSON.parse(JSON.stringify(player)), {
-    x:1203,y:1200,radius:13,hp:75,maxHp:160,speed:218,facing:1.5
+    x:1203,y:1200,radius:13,hp:75,maxHp:160,speed:200 * 1.09,facing:1.5
   });
 });
 
