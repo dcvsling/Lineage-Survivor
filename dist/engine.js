@@ -1,5 +1,5 @@
 import {normalizeRelic} from './relics.js';
-import {ComponentWorld,createPlayerEntity} from './ecs.js';
+import {ComponentWorld,createPlayerEntity,createEnemyEntity} from './ecs.js';
 /** Deterministic, DOM-free simulation. All distances are world pixels, all times seconds. */
 export const WORLD_SIZE = 2400;
 export const RUN_SECONDS = 480;
@@ -100,9 +100,9 @@ export class Engine {
       // The scheduled boss must appear even at the cap. Retire the most distant
       // regular enemy without granting an unearned kill or experience reward.
       let index=-1,far=-1;for(let i=0;i<this.enemies.length;i++){const e=this.enemies[i],d=distance(this.player,e);if(e.type!=='boss'&&d>far){index=i;far=d;}}
-      if(index<0)return null;this.enemies.splice(index,1);
+      if(index<0)return null;const [retired]=this.enemies.splice(index,1);this.ecs.destroyEntity(retired.ecsEntityId);
     }
-    const angle=this.random()*Math.PI*2;const r=460+this.random()*100;const scale=1+this.time/240;const data={melee:[24*scale,45+this.time/30,14,9],fast:[15*scale,93+this.time/35,10,7],ranged:[30*scale,36,13,10],boss:[2400,60,38,25]}[type];const e={id:this.nextId++,type,x:clamp(this.player.x+Math.cos(angle)*r,25,2375),y:clamp(this.player.y+Math.sin(angle)*r,25,2375),hp:data[0],maxHp:data[0],speed:data[1],radius:data[2],damage:data[3],shootTimer:1+this.random(),warning:0,aimAngle:0,aimAngles:[],hit:0};this.enemies.push(e);return e;}
+    const angle=this.random()*Math.PI*2;const r=460+this.random()*100;const scale=1+this.time/240;const data={melee:[24*scale,45+this.time/30,14,9],fast:[15*scale,93+this.time/35,10,7],ranged:[30*scale,36,13,10],boss:[2400,60,38,25]}[type];const e={id:this.nextId++,type,x:clamp(this.player.x+Math.cos(angle)*r,25,2375),y:clamp(this.player.y+Math.sin(angle)*r,25,2375),hp:data[0],maxHp:data[0],speed:data[1],radius:data[2],damage:data[3],shootTimer:1+this.random(),warning:0,aimAngle:0,aimAngles:[],hit:0};const {enemy}=createEnemyEntity(this.ecs,e);this.enemies.push(enemy);return enemy;}
   hit(enemy,amount,source='weapon'){if(['dead','victory','retreat'].includes(this.status))return;if(!enemy||enemy.hp<=0||!Number.isFinite(amount)||amount<=0)return;if(!Object.hasOwn(this.damage,source))source='weapon';const actual=Math.min(enemy.hp,amount);enemy.hp-=amount;enemy.hit=.12;this.damage[source]+=actual;this.effect('text',enemy.x,enemy.y-18,0,source==='weapon'?'#f7dfaa':'#bcb1ff',String(Math.round(amount)));if(enemy.hp<=0){this.kills++;this.pickups.push({x:enemy.x,y:enemy.y,value:enemy.type==='boss'?100:enemy.type==='ranged'?4:enemy.type==='fast'?2:3});if(enemy.type==='boss'){this.bossDefeated=true;this.effect('burst',enemy.x,enemy.y,130,'#f4ce79');}this.effect('death',enemy.x,enemy.y,enemy.radius+8,'#738e75');}}
   nearest(max=Infinity){let target=null,dist=max;for(const e of this.enemies){if(e.hp<=0)continue;const d=distance(this.player,e);if(d<dist){target=e;dist=d;}}return target;}
   attack(){const p=this.player;const target=this.nearest(680);if(!target)return;const power=(1+this.upgrades.weapon*.28)*(1+this.equipment.weapon*.08);const evolved=this.upgrades.weapon>=5;const angle=Math.atan2(target.y-p.y,target.x-p.x);p.facing=angle;
@@ -139,7 +139,7 @@ export class Engine {
     }}
     for(const b of this.projectiles){if(b.kind==='mage'&&b.life>1.15){const target=this.enemies.find(e=>e.id===b.targetId&&e.hp>0);if(target){const angle=Math.atan2(target.y-b.y,target.x-b.x);b.vx+=(Math.cos(angle)*360-b.vx)*Math.min(1,dt*7);b.vy+=(Math.sin(angle)*360-b.vy)*Math.min(1,dt*7);}}b.x+=b.vx*dt;b.y+=b.vy*dt;b.life-=dt;if(b.hostile){if(distance(b,p)<b.radius+p.radius){this.hurt(b.damage,{enemyType:b.enemyType,kind:'projectile'});b.life=0;if(this.status==='dead')return;}}else{for(const e of this.enemies){if(e.hp<=0||b.hitIds.includes(e.id)||distance(b,e)>=b.radius+e.radius)continue;b.hitIds.push(e.id);if(b.blast){this.effect('burst',b.x,b.y,b.blast,'#ca9bfa');for(const target of this.enemies)if(distance(b,target)<b.blast+target.radius)this.hit(target,b.damage);}else this.hit(e,b.damage);b.pierce--;if(b.pierce<=0){b.life=0;break;}}}}
     const magnet=this.pickupRadius;for(const gem of this.pickups){const d=distance(gem,p);if(d<magnet){const speed=300+Math.max(0,magnet-d)*3;gem.x+=(p.x-gem.x)/(d||1)*Math.min(d,speed*dt);gem.y+=(p.y-gem.y)/(d||1)*Math.min(d,speed*dt);}if(distance(gem,p)<20){this.xp+=gem.value;gem.collected=true;}}
-    this.enemies=this.enemies.filter(e=>e.hp>0);this.projectiles=this.projectiles.filter(b=>b.life>0).slice(-350);this.pickups=this.pickups.filter(g=>!g.collected);if(this.pickups.length>600){const old=this.pickups.splice(0,this.pickups.length-500);const value=old.reduce((n,g)=>n+g.value,0);this.pickups.push({x:old[0].x,y:old[0].y,value});}
+    this.enemies=this.enemies.filter(e=>{if(e.hp>0)return true;this.ecs.destroyEntity(e.ecsEntityId);return false;});this.projectiles=this.projectiles.filter(b=>b.life>0).slice(-350);this.pickups=this.pickups.filter(g=>!g.collected);if(this.pickups.length>600){const old=this.pickups.splice(0,this.pickups.length-500);const value=old.reduce((n,g)=>n+g.value,0);this.pickups.push({x:old[0].x,y:old[0].y,value});}
     for(const fx of this.effects)fx.life-=dt;this.effects=this.effects.filter(fx=>fx.life>0).slice(-150);
     this.abilityCooldown=Math.max(0,this.abilityCooldown-dt);this.abilityDuration=Math.max(0,this.abilityDuration-dt);
     if(this.status!=='playing')return;if(this.time>=RUN_SECONDS-1e-9){this.time=RUN_SECONDS;this.finish(this.bossDefeated?'victory':'retreat');}else this.checkLevel();

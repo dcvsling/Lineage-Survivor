@@ -72,3 +72,36 @@ export function createPlayerEntity(world, {x, y, radius, hp, maxHp, speed, facin
   }
   return {id, player};
 }
+
+/**
+ * Migrates enemy position, vitals and movement into the same ECS world as the
+ * player without changing existing Engine/Renderer enemy object consumers.
+ * Legacy IDs are not ECS IDs; ecsEntityId is hidden from serialized snapshots.
+ */
+export function createEnemyEntity(world, initial) {
+  const id = world.createEntity();
+  const components = {
+    position: world.addComponent(id, 'position', {
+      x: initial.x, y: initial.y, radius: initial.radius
+    }),
+    vitals: world.addComponent(id, 'vitals', {
+      hp: initial.hp, maxHp: initial.maxHp
+    }),
+    movement: world.addComponent(id, 'movement', {speed: initial.speed})
+  };
+  world.addComponent(id, 'enemy', {id: initial.id, type: initial.type});
+  const enemy = {...initial};
+  for (const [field, type] of [
+    ['x', 'position'], ['y', 'position'], ['radius', 'position'],
+    ['hp', 'vitals'], ['maxHp', 'vitals'], ['speed', 'movement']
+  ]) {
+    const data = components[type];
+    Object.defineProperty(enemy, field, {
+      enumerable: true, configurable: true,
+      get() { return data[field]; },
+      set(value) { data[field] = value; }
+    });
+  }
+  Object.defineProperty(enemy, 'ecsEntityId', {value: id});
+  return {id, enemy};
+}
