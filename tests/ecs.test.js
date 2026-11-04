@@ -72,3 +72,51 @@ test('combat Engine reads and writes ECS player state without changing public pl
   const ward = new Engine('knight',{},42,'ward');
   assert.equal(ward.ecs.getComponent(ward.playerEntityId,'movement').speed,ward.player.speed);
 });
+
+test('enemy components are live and legacy enemy shape remains serializable', () => {
+  const game = new Engine('mage',{},42);
+  const enemy = game.spawn('ranged');
+  const id = enemy.ecsEntityId;
+  assert.ok(Number.isInteger(id));
+  assert.equal(Object.prototype.propertyIsEnumerable.call(enemy,'ecsEntityId'),false);
+  assert.deepEqual([...game.ecs.query('enemy')],[id]);
+  const before = JSON.parse(JSON.stringify(enemy));
+  assert.ok(!Object.hasOwn(before,'ecsEntityId'));
+  assert.equal(before.type,'ranged');
+  enemy.x += 15;
+  enemy.hp -= 4;
+  enemy.speed *= .5;
+  assert.equal(game.ecs.getComponent(id,'position').x,enemy.x);
+  assert.equal(game.ecs.getComponent(id,'vitals').hp,enemy.hp);
+  assert.equal(game.ecs.getComponent(id,'movement').speed,enemy.speed);
+  game.ecs.getComponent(id,'position').y -= 10;
+  assert.equal(enemy.y, before.y - 10);
+});
+
+test('dead enemies remove their ECS entities on cleanup without additional rewards', () => {
+  const game = new Engine('knight',{},17);
+  const enemy = game.spawn('melee');
+  const id = enemy.ecsEntityId;
+  game.hit(enemy,9999);
+  assert.equal(game.ecs.getComponent(id,'vitals').hp<=0,true);
+  game.spawnTimer = 100;
+  game.update(1/30);
+  assert.equal(game.enemies.some(e=>e.id===enemy.id),false);
+  assert.equal(game.ecs.getComponent(id,'position'),undefined);
+  assert.deepEqual([...game.ecs.query('enemy')],[]);
+  assert.equal(game.kills,1);
+});
+
+test('boss spawn at population cap retires an ECS entity without a phantom enemy', () => {
+  const game = new Engine('elf',{},123);
+  for(let i=0;i<180;i++)assert.ok(game.spawn('melee'));
+  const originalIds = new Set(game.enemies.map(e=>e.ecsEntityId));
+  const boss = game.spawn('boss');
+  assert.ok(boss);
+  assert.equal(game.enemies.length,180);
+  const live = [...game.ecs.query('enemy')];
+  assert.equal(live.length,180);
+  assert.ok(live.includes(boss.ecsEntityId));
+  assert.equal([...originalIds].filter(id=>!live.includes(id)).length,1);
+  assert.equal(game.enemies.some(e=>e.type==='boss'),true);
+});
