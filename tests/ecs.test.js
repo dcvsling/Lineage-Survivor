@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {ComponentWorld, createPlayerEntity} from '../dist/ecs.js';
+import {ComponentWorld, createPlayerEntity, createEnemyEntity} from '../dist/ecs.js';
 import {Engine} from '../dist/engine.js';
 
 test('ECS entities, components and queries have predictable lifetimes', () => {
@@ -103,6 +103,7 @@ test('dead enemies remove their ECS entities on cleanup without additional rewar
   game.update(1/30);
   assert.equal(game.enemies.some(e=>e.id===enemy.id),false);
   assert.equal(game.ecs.getComponent(id,'position'),undefined);
+  assert.equal(game.ecs.getComponent(id,'combat'),undefined);
   assert.deepEqual([...game.ecs.query('enemy')],[]);
   assert.equal(game.kills,1);
 });
@@ -119,4 +120,64 @@ test('boss spawn at population cap retires an ECS entity without a phantom enemy
   assert.ok(live.includes(boss.ecsEntityId));
   assert.equal([...originalIds].filter(id=>!live.includes(id)).length,1);
   assert.equal(game.enemies.some(e=>e.type==='boss'),true);
+});
+
+test('enemy combat fields are ECS-owned without changing serialized enemy shape', () => {
+  const game = new Engine('elf',{},42);
+  const enemy = game.spawn('ranged');
+  const combat = game.ecs.getComponent(enemy.ecsEntityId,'combat');
+  const fields = ['damage','shootTimer','warning','aimAngle','aimAngles','hit'];
+  const originalKeys = Object.keys(JSON.parse(JSON.stringify(enemy)));
+  assert.deepEqual(Object.keys(combat),fields);
+  for (const key of fields) assert.deepEqual(combat[key],enemy[key]);
+
+  enemy.damage=18;
+  enemy.shootTimer=.25;
+  enemy.aimAngles=[.1,.2,.3];
+  assert.equal(combat.damage,18);
+  assert.equal(combat.shootTimer,.25);
+  assert.strictEqual(combat.aimAngles,enemy.aimAngles);
+
+  combat.warning=.4;
+  combat.aimAngle=1.3;
+  combat.hit=.12;
+  assert.equal(enemy.warning,.4);
+  assert.equal(enemy.aimAngle,1.3);
+  assert.equal(enemy.hit,.12);
+  assert.deepEqual(Object.keys(JSON.parse(JSON.stringify(enemy))),originalKeys);
+  assert.equal(Object.hasOwn(JSON.parse(JSON.stringify(enemy)),'ecsEntityId'),false);
+});
+
+test('enemy telegraph and shot cadence write through combat component and freeze on pause', () => {
+  const game=new Engine('knight',{},42);
+  const enemy=game.spawn('ranged');
+  const combat=game.ecs.getComponent(enemy.ecsEntityId,'combat');
+  game.spawnTimer=100;
+  game.attackTimer=100;
+  enemy.shootTimer=0;
+  game.update(.01);
+  assert.equal(combat.warning,.6);
+  assert.equal(combat.aimAngles.length,1);
+  assert.equal(game.projectiles.length,0);
+  game.togglePause();
+  const paused=JSON.stringify(combat);
+  game.update(1);
+  assert.equal(JSON.stringify(combat),paused);
+  game.togglePause();
+  game.update(.25);
+  game.update(.25);
+  game.update(.1);
+  assert.equal(combat.warning,0);
+  assert.equal(combat.shootTimer,2.9);
+  assert.equal(game.projectiles.filter(p=>p.hostile).length,1);
+});
+
+test('generic enemy ECS adapter does not introduce absent combat fields', () => {
+  const world=new ComponentWorld();
+  const initial={id:7,type:'melee',x:1,y:2,radius:3,hp:10,maxHp:10,speed:2};
+  const {id,enemy}=createEnemyEntity(world,initial);
+  assert.deepEqual(Object.keys(enemy),Object.keys(initial));
+  assert.deepEqual(world.getComponent(id,'combat'),{});
+  world.destroyEntity(id);
+  assert.equal(world.getComponent(id,'combat'),undefined);
 });
