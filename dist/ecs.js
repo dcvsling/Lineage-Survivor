@@ -74,12 +74,13 @@ export function createPlayerEntity(world, {x, y, radius, hp, maxHp, speed, facin
 }
 
 /**
- * Migrates enemy position, vitals and movement into the same ECS world as the
+ * Migrates enemy position, vitals, movement and combat state into the same ECS world as the
  * player without changing existing Engine/Renderer enemy object consumers.
  * Legacy IDs are not ECS IDs; ecsEntityId is hidden from serialized snapshots.
  */
 export function createEnemyEntity(world, initial) {
   const id = world.createEntity();
+  const combatFields = ['damage', 'shootTimer', 'warning', 'aimAngle', 'aimAngles', 'hit'];
   const components = {
     position: world.addComponent(id, 'position', {
       x: initial.x, y: initial.y, radius: initial.radius
@@ -87,13 +88,21 @@ export function createEnemyEntity(world, initial) {
     vitals: world.addComponent(id, 'vitals', {
       hp: initial.hp, maxHp: initial.maxHp
     }),
-    movement: world.addComponent(id, 'movement', {speed: initial.speed})
+    movement: world.addComponent(id, 'movement', {speed: initial.speed}),
+    // Attack cadence, telegraph and hit feedback are now authoritative ECS
+    // state. Keep only fields present on input so generic callers retain the
+    // exact shape of their existing serializable enemy view.
+    combat: world.addComponent(id, 'combat', Object.fromEntries(
+      combatFields.filter(field => Object.hasOwn(initial, field))
+        .map(field => [field, initial[field]])
+    ))
   };
   world.addComponent(id, 'enemy', {id: initial.id, type: initial.type});
   const enemy = {...initial};
   for (const [field, type] of [
     ['x', 'position'], ['y', 'position'], ['radius', 'position'],
-    ['hp', 'vitals'], ['maxHp', 'vitals'], ['speed', 'movement']
+    ['hp', 'vitals'], ['maxHp', 'vitals'], ['speed', 'movement'],
+    ...combatFields.filter(field => Object.hasOwn(initial, field)).map(field => [field, 'combat'])
   ]) {
     const data = components[type];
     Object.defineProperty(enemy, field, {
