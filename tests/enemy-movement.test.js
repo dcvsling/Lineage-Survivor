@@ -6,7 +6,7 @@ import {stepEnemyMovement} from '../dist/enemy-movement.js';
 
 test('slow timer remains absent in initial JSON but is owned by movement ECS after frost', () => {
   const g = new Engine('mage', {}, 42);
-  const enemy = g.spawn('melee');
+  const enemy = g.spawn('boss'); // survives the frost nova, so the timer can tick
   enemy.x = g.player.x + 100;
   enemy.y = g.player.y;
   const movement = g.ecs.getComponent(enemy.ecsEntityId, 'movement');
