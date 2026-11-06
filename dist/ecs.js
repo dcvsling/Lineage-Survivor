@@ -88,7 +88,10 @@ export function createEnemyEntity(world, initial) {
     vitals: world.addComponent(id, 'vitals', {
       hp: initial.hp, maxHp: initial.maxHp
     }),
-    movement: world.addComponent(id, 'movement', {speed: initial.speed}),
+    movement: world.addComponent(id, 'movement', {
+      speed: initial.speed,
+      ...(Object.hasOwn(initial, 'slowTimer') ? {slowTimer: initial.slowTimer} : {})
+    }),
     // Attack cadence, telegraph and hit feedback are now authoritative ECS
     // state. Keep only fields present on input so generic callers retain the
     // exact shape of their existing serializable enemy view.
@@ -111,6 +114,19 @@ export function createEnemyEntity(world, initial) {
       set(value) { data[field] = value; }
     });
   }
+  // Historically slowTimer is absent until a frost effect or the first update.
+  // Keep JSON/Object.keys stable while owning the timer in ECS movement state.
+  const hadSlowTimer = Object.hasOwn(initial, 'slowTimer');
+  Object.defineProperty(enemy, 'slowTimer', {
+    enumerable: hadSlowTimer, configurable: true,
+    get() { return components.movement.slowTimer; },
+    set(value) {
+      components.movement.slowTimer = value;
+      if (!Object.prototype.propertyIsEnumerable.call(enemy, 'slowTimer')) {
+        Object.defineProperty(enemy, 'slowTimer', {enumerable: true});
+      }
+    }
+  });
   Object.defineProperty(enemy, 'ecsEntityId', {value: id});
   return {id, enemy};
 }
