@@ -1,5 +1,6 @@
 import {normalizeRelic} from './relics.js';
 import {ComponentWorld,createPlayerEntity,createEnemyEntity} from './ecs.js';
+import {stepEnemyMovement} from './enemy-movement.js';
 /** Deterministic, DOM-free simulation. All distances are world pixels, all times seconds. */
 export const WORLD_SIZE = 2400;
 export const RUN_SECONDS = 480;
@@ -118,7 +119,7 @@ export class Engine {
     this.attackTimer-=dt;if(this.attackTimer<=0){this.attackTimer=(this.classId==='knight'?.72:this.classId==='elf'?.65:1.05)*Math.pow(.88,this.upgrades.haste);this.attack();}
     this.orbTimer-=dt;if(this.upgrades.orb&&this.orbTimer<=0){this.orbTimer=.5;const range=this.upgrades.orb>=5?122:85;this.effect('orb',p.x,p.y,range,'#83d8d0');for(const e of this.enemies)if(distance(p,e)<range+e.radius)this.hit(e,5+this.upgrades.orb*5,'orb');}
     this.lightningTimer-=dt;if(this.upgrades.lightning&&this.lightningTimer<=0){this.lightningTimer=this.upgrades.lightning>=5?1.3:2;const targets=this.enemies.filter(e=>e.hp>0&&distance(p,e)<600).sort((a,b)=>distance(p,a)-distance(p,b)).slice(0,this.upgrades.lightning+1);for(const e of targets){this.hit(e,22+this.upgrades.lightning*12,'lightning');this.effect('lightning',e.x,e.y,30,'#9cbbff');}}
-    for(const e of this.enemies){if(e.hp<=0)continue;e.hit=Math.max(0,e.hit-dt);e.slowTimer=Math.max(0,(e.slowTimer||0)-dt);const slow=e.slowTimer>0?.4:1;const dx=p.x-e.x,dy=p.y-e.y,d=Math.hypot(dx,dy)||1;const approach=e.type==='ranged'?(d>260?1:d<170?-0.6:0):1;e.x=clamp(e.x+dx/d*e.speed*slow*approach*dt,15,2385);e.y=clamp(e.y+dy/d*e.speed*slow*approach*dt,15,2385);if(d<e.radius+p.radius){this.hurt(e.damage,{enemyType:e.type,kind:'contact'});if(this.status==='dead')return;}if(e.type==='ranged'||e.type==='boss'){
+    for(const e of this.enemies){if(e.hp<=0)continue;e.hit=Math.max(0,e.hit-dt);const d=stepEnemyMovement(e,p,dt);if(d<e.radius+p.radius){this.hurt(e.damage,{enemyType:e.type,kind:'contact'});if(this.status==='dead')return;}if(e.type==='ranged'||e.type==='boss'){
       if(e.warning>0){
         e.warning=Math.max(0,e.warning-dt);e.shootTimer=e.warning;
         if(e.warning<=1e-9){
