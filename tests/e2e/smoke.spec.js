@@ -62,3 +62,49 @@ test('optional touch controls toggle without interfering with camp', async ({pag
   await expect(page.locator('#touch')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#camp')).toBeVisible();
 });
+
+test('Canvas backing store resizes without re-enabling pixel smoothing', async ({page}) => {
+  const pageErrors = [];
+  page.on('pageerror', error => pageErrors.push(error.message));
+  await beginRun(page);
+  const canvas = page.locator('#world');
+  const snapshot = () => canvas.evaluate(el => ({
+    width: el.width, height: el.height,
+    smoothing: el.getContext('2d').imageSmoothingEnabled
+  }));
+  await page.setViewportSize({width:1200,height:800});
+  await expect.poll(snapshot).toEqual({width:600,height:400,smoothing:false});
+  await page.setViewportSize({width:390,height:780});
+  await expect.poll(snapshot).toEqual({width:195,height:390,smoothing:false});
+  expect(pageErrors).toEqual([]);
+});
+
+test('narrow-viewport joystick pointer moves the player and releases cleanly', async ({page}) => {
+  await page.setViewportSize({width:390,height:780});
+  await beginRun(page);
+  const joystick = page.locator('#joystick');
+  await expect(joystick).toBeVisible();
+
+  await page.locator('#pause').click();
+  let section = await openDiagnostics(page);
+  const before = await runCommand(section,'player');
+  const firstX = Number(before.match(/座標: \((\d+),\s*\d+\)/)?.[1]);
+  expect(Number.isFinite(firstX)).toBe(true);
+
+  await page.getByRole('button',{name:'繼續遠征'}).click();
+  const bounds = await joystick.boundingBox();
+  expect(bounds).not.toBeNull();
+  const x = bounds.x+bounds.width/2, y = bounds.y+bounds.height/2;
+  await page.mouse.move(x,y);
+  await page.mouse.down();
+  await page.mouse.move(x+29,y,{steps:6});
+  await page.waitForTimeout(650);
+  await page.mouse.up();
+  expect(await joystick.locator('div').evaluate(el=>el.style.transform)).toBe('translate(0px, 0px)');
+
+  await page.locator('#pause').click();
+  section = await openDiagnostics(page);
+  const after = await runCommand(section,'player');
+  const secondX = Number(after.match(/座標: \((\d+),\s*\d+\)/)?.[1]);
+  expect(secondX).toBeGreaterThan(firstX+20);
+});
