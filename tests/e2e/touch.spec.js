@@ -25,7 +25,7 @@ async function readPausedPlayerX(page) {
   await diagnostics.locator('input').fill('player');
   await diagnostics.getByRole('button', {name:'查詢'}).click();
   const text = await diagnostics.locator('output').textContent();
-  const x = Number(text.match(/座標: \\((-?\\d+),\\s*-?\\d+\\)/)?.[1]);
+  const x = Number(text.match(/座標: \((-?\d+),\s*-?\d+\)/)?.[1]);
   expect(Number.isFinite(x), text).toBe(true);
   return x;
 }
