@@ -20,7 +20,7 @@ async function beginRun(page) {
 }
 
 async function readPausedPlayerX(page) {
-  const diagnostics = page.locator('#modal details.diagnostics');
+  const diagnostics = page.locator('#modal details.diagnostics').filter({hasText:'遠征情報 · 唯讀指令'});
   await diagnostics.locator('summary').click();
   await diagnostics.locator('input').fill('player');
   await diagnostics.getByRole('button', {name:'查詢'}).click();
