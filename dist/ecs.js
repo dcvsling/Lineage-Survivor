@@ -130,3 +130,29 @@ export function createEnemyEntity(world, initial) {
   Object.defineProperty(enemy, 'ecsEntityId', {value: id});
   return {id, enemy};
 }
+
+
+/**
+ * Player-owned skill and spell timers. The engine continues to expose its
+ * historical enumerable fields as live views, preserving save-independent
+ * deterministic snapshots and existing renderer/HUD consumers.
+ */
+export function createPlayerCombatState(world, playerId) {
+  return {
+    ability: world.addComponent(playerId, 'ability', {
+      cooldown: 0, duration: 0, dashDirection: {x: 1, y: 0}
+    }),
+    spells: world.addComponent(playerId, 'spells', {
+      attackTimer: 0, orbTimer: 0, lightningTimer: 2
+    })
+  };
+}
+
+/** Bind an existing public engine field to an ECS-owned component field. */
+export function exposeComponentField(target, field, component, key = field) {
+  Object.defineProperty(target, field, {
+    enumerable: true, configurable: true,
+    get() { return component[key]; },
+    set(value) { component[key] = value; }
+  });
+}
