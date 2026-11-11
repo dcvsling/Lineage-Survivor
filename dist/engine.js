@@ -1,6 +1,7 @@
 import {normalizeRelic} from './relics.js';
 import {ComponentWorld,createPlayerEntity,createEnemyEntity,createPlayerCombatState,exposeComponentField} from './ecs.js';
 import {stepEnemyMovement} from './enemy-movement.js';
+import {stepPlayerSpells,stepPlayerAbilityTimers} from './player-spells.js';
 /** Deterministic, DOM-free simulation. All distances are world pixels, all times seconds. */
 export const WORLD_SIZE = 2400;
 export const RUN_SECONDS = 480;
@@ -126,9 +127,7 @@ export class Engine {
   step(dt,input){this.relicCooldown=Math.max(0,this.relicCooldown-dt);this.time=Math.min(RUN_SECONDS,this.time+dt);const p=this.player;let ix=axis(input?.x),iy=axis(input?.y);const norm=Math.max(1,Math.hypot(ix,iy));const dashTime=this.classId==='elf'?Math.min(dt,this.abilityDuration):0;const walkTime=dt-dashTime;p.x=clamp(p.x+ix/norm*p.speed*walkTime+this.dashDirection.x*720*dashTime,20,2380);p.y=clamp(p.y+iy/norm*p.speed*walkTime+this.dashDirection.y*720*dashTime,20,2380);if(ix||iy)p.facing=Math.atan2(iy,ix);this.hurtTimer=Math.max(0,this.hurtTimer-dt);
     this.spawnTimer-=dt;if(this.spawnTimer<=0&&this.enemies.length<180){this.spawnTimer=Math.max(.12,.85-this.time/.72e3);const n=1+Math.floor(this.time/160);for(let i=0;i<n;i++){const r=this.random();this.spawn(this.time>60&&r<.2?'ranged':this.time>25&&r<.48?'fast':'melee');}}
     if(!this.bossSpawned&&this.time>=420){this.bossSpawned=true;this.spawn('boss');this.effect('text',p.x,p.y-80,0,'#ffb48c','古森君王降臨');}
-    this.attackTimer-=dt;if(this.attackTimer<=0){this.attackTimer=(this.classId==='knight'?.72:this.classId==='elf'?.65:1.05)*Math.pow(.88,this.upgrades.haste);this.attack();}
-    this.orbTimer-=dt;if(this.upgrades.orb&&this.orbTimer<=0){this.orbTimer=.5;const range=this.upgrades.orb>=5?122:85;this.effect('orb',p.x,p.y,range,'#83d8d0');for(const e of this.enemies)if(distance(p,e)<range+e.radius)this.hit(e,5+this.upgrades.orb*5,'orb');}
-    this.lightningTimer-=dt;if(this.upgrades.lightning&&this.lightningTimer<=0){this.lightningTimer=this.upgrades.lightning>=5?1.3:2;const targets=this.enemies.filter(e=>e.hp>0&&distance(p,e)<600).sort((a,b)=>distance(p,a)-distance(p,b)).slice(0,this.upgrades.lightning+1);for(const e of targets){this.hit(e,22+this.upgrades.lightning*12,'lightning');this.effect('lightning',e.x,e.y,30,'#9cbbff');}}
+    stepPlayerSpells(this,dt);
     for(const e of this.enemies){if(e.hp<=0)continue;e.hit=Math.max(0,e.hit-dt);const d=stepEnemyMovement(e,p,dt);if(d<e.radius+p.radius){this.hurt(e.damage,{enemyType:e.type,kind:'contact'});if(this.status==='dead')return;}if(e.type==='ranged'||e.type==='boss'){
       if(e.warning>0){
         e.warning=Math.max(0,e.warning-dt);e.shootTimer=e.warning;
@@ -152,7 +151,7 @@ export class Engine {
     const magnet=this.pickupRadius;for(const gem of this.pickups){const d=distance(gem,p);if(d<magnet){const speed=300+Math.max(0,magnet-d)*3;gem.x+=(p.x-gem.x)/(d||1)*Math.min(d,speed*dt);gem.y+=(p.y-gem.y)/(d||1)*Math.min(d,speed*dt);}if(distance(gem,p)<20){this.xp+=gem.value;gem.collected=true;}}
     this.enemies=this.enemies.filter(e=>{if(e.hp>0)return true;this.ecs.destroyEntity(e.ecsEntityId);return false;});this.projectiles=this.projectiles.filter(b=>b.life>0).slice(-350);this.pickups=this.pickups.filter(g=>!g.collected);if(this.pickups.length>600){const old=this.pickups.splice(0,this.pickups.length-500);const value=old.reduce((n,g)=>n+g.value,0);this.pickups.push({x:old[0].x,y:old[0].y,value});}
     for(const fx of this.effects)fx.life-=dt;this.effects=this.effects.filter(fx=>fx.life>0).slice(-150);
-    this.abilityCooldown=Math.max(0,this.abilityCooldown-dt);this.abilityDuration=Math.max(0,this.abilityDuration-dt);
+    stepPlayerAbilityTimers(this,dt);
     if(this.status!=='playing')return;if(this.time>=RUN_SECONDS-1e-9){this.time=RUN_SECONDS;this.finish(this.bossDefeated?'victory':'retreat');}else this.checkLevel();
   }
 }
