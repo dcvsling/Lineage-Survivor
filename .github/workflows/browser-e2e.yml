@@ -7,7 +7,9 @@ permissions:
   contents: read
 jobs:
   chromium:
-    runs-on: ubuntu-latest
+    # Pin a supported Ubuntu LTS image: ubuntu-latest moved to a newer
+    # distro with intermittent apt mirror/DNS failures during browser setup.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
