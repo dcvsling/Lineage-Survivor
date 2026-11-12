@@ -2,6 +2,7 @@ import {normalizeRelic} from './relics.js';
 import {ComponentWorld,createPlayerEntity,createEnemyEntity,createPlayerCombatState,exposeComponentField} from './ecs.js';
 import {stepEnemyMovement} from './enemy-movement.js';
 import {stepPlayerSpells,stepPlayerAbilityTimers} from './player-spells.js';
+import {castPlayerAbility} from './player-abilities.js';
 /** Deterministic, DOM-free simulation. All distances are world pixels, all times seconds. */
 export const WORLD_SIZE = 2400;
 export const RUN_SECONDS = 480;
@@ -83,24 +84,7 @@ export class Engine {
   random(){let a=this.seed+=0x6D2B79F5; a=Math.imul(a^a>>>15,a|1);a^=a+Math.imul(a^a>>>7,a|61);return ((a^a>>>14)>>>0)/4294967296;}
   togglePause(){if(this.status==='playing')this.status='paused';else if(this.status==='paused')this.status='playing';return this.status;}
   heal(){if(this.status!=='playing'||this.potions<=0||this.player.hp>=this.player.maxHp)return false;this.potions--;this.player.hp=Math.min(this.player.maxHp,this.player.hp+this.player.maxHp*.45);this.effect('heal',this.player.x,this.player.y,45,'#8fffc1','治癒');return true;}
-  useAbility(input={x:0,y:0}){
-    if(this.status!=='playing'||this.abilityCooldown>0)return false;
-    let inputX,inputY;try{inputX=Number(input?.x??0);inputY=Number(input?.y??0);}catch{return false;}
-    const p=this.player;
-    this.abilityCooldown=this.ability.cooldown;this.abilityDuration=this.ability.duration;
-    if(this.classId==='knight'){
-      for(const e of this.enemies){if(e.hp<=0)continue;const dx=e.x-p.x,dy=e.y-p.y,d=Math.hypot(dx,dy);if(d<165+e.radius){const angle=d?Math.atan2(dy,dx):p.facing;const push=e.type==='boss'?35:110;e.x=clamp(e.x+Math.cos(angle)*push,15,2385);e.y=clamp(e.y+Math.sin(angle)*push,15,2385);}}
-      this.effect('ward',p.x,p.y,165,this.ability.color);
-    }else if(this.classId==='elf'){
-      const x=axis(inputX),y=axis(inputY),length=Math.hypot(x,y);
-      this.dashDirection=length?{x:x/length,y:y/length}:{x:Math.cos(p.facing),y:Math.sin(p.facing)};
-      this.effect('dash',p.x,p.y,48,this.ability.color);
-    }else{
-      for(const e of this.enemies){if(e.hp>0&&distance(p,e)<190+e.radius){e.slowTimer=3;this.hit(e,45+this.level*3,'ability');}}
-      this.effect('frost',p.x,p.y,190,this.ability.color);
-    }
-    return true;
-  }
+  useAbility(input={x:0,y:0}){return castPlayerAbility(this,input);}
   effect(type,x,y,radius,color,text=''){this.effects.push({type,x,y,radius,color,text,life:type==='text'?0.65:0.3,maxLife:type==='text'?0.65:0.3});}
   rollChoices(){const pool=Object.keys(UPGRADES).filter(id=>this.upgrades[id]<UPGRADES[id].max);for(let i=pool.length-1;i>0;i--){const j=Math.floor(this.random()*(i+1));[pool[i],pool[j]]=[pool[j],pool[i]];}return pool.slice(0,3).map(id=>({id,...UPGRADES[id],level:this.upgrades[id]+1}));}
   checkLevel(){if(this.xp>=this.xpNext){this.xp-=this.xpNext;this.level++;this.xpNext=Math.round(12+this.level*5+this.level*this.level*.22);this.choices=this.rollChoices();if(this.choices.length)this.status='upgrade';else {this.player.hp=Math.min(this.player.maxHp,this.player.hp+15);this.checkLevel();}}}
