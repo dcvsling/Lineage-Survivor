@@ -22,6 +22,7 @@ export function activeSpellCombos(upgrades) {
 
 export function lightningInterval(upgrades) {
   const base = rank(upgrades?.lightning) >= 5 ? 1.3 : 2;
-  return activeSpellCombos(upgrades).reduce(
-    (interval, combo) => interval * combo.lightningIntervalMultiplier, base);
+  const interval = activeSpellCombos(upgrades).reduce(
+    (value, combo) => value * combo.lightningIntervalMultiplier, base);
+  return Math.round(interval * 1000) / 1000;
 }

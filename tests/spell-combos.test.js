@@ -17,6 +17,7 @@ test('雷焰共鳴 requires two rank-three spells and is a pure stateless rule',
   close(lightningInterval(upgrades), 1.8);
   upgrades.lightning = 5;
   close(lightningInterval(upgrades), 1.17);
+  assert.equal(String(lightningInterval(upgrades)), '1.17');
   upgrades.orb = 2;
   close(lightningInterval(upgrades), 1.3);
   assert.deepEqual(activeSpellCombos(null), []);
