@@ -2,14 +2,14 @@
  * Called once per Engine.step after spawning and before enemy movement.
  * Attack / orb / lightning order intentionally matches the legacy engine.
  */
-import {lightningInterval} from './spell-combos.js';
+import {lightningInterval,orbRange} from './spell-combos.js';
 const distance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
 
 export function stepPlayerSpells(game,dt){
   const p=game.player;
   const spells=game.ecs.getComponent(game.playerEntityId,'spells');
     spells.attackTimer-=dt;if(spells.attackTimer<=0){spells.attackTimer=(game.classId==='knight'?.72:game.classId==='elf'?.65:1.05)*Math.pow(.88,game.upgrades.haste);game.attack();}
-    spells.orbTimer-=dt;if(game.upgrades.orb&&spells.orbTimer<=0){spells.orbTimer=.5;const range=game.upgrades.orb>=5?122:85;game.effect('orb',p.x,p.y,range,'#83d8d0');for(const e of game.enemies)if(distance(p,e)<range+e.radius)game.hit(e,5+game.upgrades.orb*5,'orb');}
+    spells.orbTimer-=dt;if(game.upgrades.orb&&spells.orbTimer<=0){spells.orbTimer=.5;const range=orbRange(game.upgrades,game.relicId);game.effect('orb',p.x,p.y,range,'#83d8d0');for(const e of game.enemies)if(distance(p,e)<range+e.radius)game.hit(e,5+game.upgrades.orb*5,'orb');}
     spells.lightningTimer-=dt;if(game.upgrades.lightning&&spells.lightningTimer<=0){spells.lightningTimer=lightningInterval(game.upgrades);const targets=game.enemies.filter(e=>e.hp>0&&distance(p,e)<600).sort((a,b)=>distance(p,a)-distance(p,b)).slice(0,game.upgrades.lightning+1);for(const e of targets){game.hit(e,22+game.upgrades.lightning*12,'lightning');game.effect('lightning',e.x,e.y,30,'#9cbbff');}}
 }
 
