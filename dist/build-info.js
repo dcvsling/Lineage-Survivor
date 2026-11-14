@@ -1,6 +1,6 @@
 /** Presentation-only descriptions. No simulation state is changed here. */
 import {RELICS,normalizeRelic} from './relics.js';
-import {activeSpellCombos,lightningInterval} from './spell-combos.js';
+import {activeSpellCombos,lightningInterval,orbRange} from './spell-combos.js';
 import {CLASSES,UPGRADES,ABILITIES} from './engine.js';
 const EVOLUTIONS={weapon:{knight:'破曉月鋼斬',elf:'疾風星雨',mage:'雙星焚界'},orb:'熾天聖焰環',lightning:'天罰雷霆'};
 const BASE={knight:{damage:23,interval:.72},elf:{damage:26,interval:.65},mage:{damage:34,interval:1.05}};
@@ -52,13 +52,17 @@ export function upgradeInfo(classId,id,currentLevel=0,context={}){
   const c=classKey(classId),r=rank(currentLevel,UPGRADES[id].max),nextLevel=Math.min(r+1,UPGRADES[id].max),maxed=r>=UPGRADES[id].max;
   const evolves=!maxed&&nextLevel===5&&Object.hasOwn(EVOLUTIONS,id),current=statsFor(c,id,r),next=statsFor(c,id,nextLevel);
   if(id==='magnet'&&normalizeRelic(context?.relicId)==='compass'){current.range+=100;next.range+=100;}
+  if(id==='orb'){
+    current.range=orbRange({...context?.upgrades,orb:r},context?.relicId);
+    next.range=orbRange({...context?.upgrades,orb:nextLevel},context?.relicId);
+  }
   if(id==='lightning'){
     current.interval=lightningInterval({...context?.upgrades,lightning:r});
     next.interval=lightningInterval({...context?.upgrades,lightning:nextLevel});
   }
   const currentDescription=describe(c,id,r,current),nextDescription=describe(c,id,nextLevel,next);
-  const before=activeSpellCombos({...context?.upgrades,[id]:r});
-  const after=activeSpellCombos({...context?.upgrades,[id]:nextLevel});
+  const before=activeSpellCombos({...context?.upgrades,[id]:r},context?.relicId);
+  const after=activeSpellCombos({...context?.upgrades,[id]:nextLevel},context?.relicId);
   const unlocked=after.filter(combo=>!before.some(existing=>existing.id===combo.id));
   const description=maxed?`已滿階：${currentDescription}`:`${changeDescription(c,id,current,next)}${evolves?`。進化為「${skillName(c,id,5)}」`:''}`;
   return {id,name:skillName(c,id,nextLevel),currentLevel:r,nextLevel,maxed,evolves,evolutionName:Object.hasOwn(EVOLUTIONS,id)?skillName(c,id,5):null,currentDescription,nextDescription,current,next,description:description+(unlocked.length?`；解鎖${unlocked.map(combo=>combo.name).join('、')}`:'')};
@@ -68,6 +72,7 @@ export function buildSummary(game={}){
   const entries=['weapon','orb','lightning','haste','vitality','speed','magnet','armor'].map(id=>{
     const level=rank(upgrades[id],UPGRADES[id].max),stats=statsFor(c,id,level);
     if(id==='magnet'&&relic==='compass')stats.range+=100;
+    if(id==='orb'&&level>0)stats.range=orbRange(upgrades,relic);
     if(id==='lightning'&&level>0)stats.interval=lightningInterval(upgrades);
     let description=describe(c,id,level,stats);
     if(id==='weapon'){
@@ -80,7 +85,7 @@ export function buildSummary(game={}){
     return {id,name:skillName(c,id,level),level,active:stats.active,evolved:level>=5&&Object.hasOwn(EVOLUTIONS,id),description,stats};
   });
   const weapon=rank(equipment.weapon),armor=rank(equipment.armor),boots=rank(equipment.boots);
-  for(const combo of activeSpellCombos(upgrades))entries.push({id:`combo:${combo.id}`,name:combo.name,active:true,description:combo.description,stats:{lightningIntervalMultiplier:combo.lightningIntervalMultiplier}});
+  for(const combo of activeSpellCombos(upgrades,relic))entries.push({id:`combo:${combo.id}`,name:combo.name,active:true,description:combo.description,stats:{...(combo.lightningIntervalMultiplier?{lightningIntervalMultiplier:combo.lightningIntervalMultiplier}:{}),...(combo.orbRangeBonus?{orbRangeBonus:combo.orbRangeBonus}:{})}});
   entries.push({id:'equipment',name:'傳承裝備',active:true,description:`武器傷害 × ${fmt(1+weapon*.08)}；鎧甲生命 +${armor*10}、減傷 ${armor}；戰靴基礎速度 +${boots*5}`});
   entries.push({id:'ability',name:ABILITIES[c].name,active:true,description:`冷卻 ${game?.ability?.cooldown??ABILITIES[c].cooldown*(relic==='hourglass'?.75:1)} 秒；${ABILITIES[c].description}`});
   entries.push({id:'relic',name:RELICS[relic].name,active:true,description:RELICS[relic].description+(relic==='ward'?` 目前${game?.relicCooldown>0?'充能剩餘 '+Math.ceil(game.relicCooldown)+' 秒':'可抵擋飛射攻擊'}。`:'')});
