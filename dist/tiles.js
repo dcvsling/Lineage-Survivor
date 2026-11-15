@@ -25,9 +25,11 @@ export function visibleChunkBounds(minX, minY, maxX, maxY) {
   };
 }
 
+const TILE_COLORS = Object.freeze(['#182b20', '#1b3022', '#203628', '#192d21', '#25362b']);
+
 /** Render a complete opaque 16×16 forest cell; every detail stays inside its cell. */
 function paintTile(c, x, y, kind, seed) {
-  c.fillStyle = ['#182b20', '#1b3022', '#203628', '#192d21', '#25362b'][kind];
+  c.fillStyle = TILE_COLORS[kind];
   c.fillRect(x, y, TILE_SIZE, TILE_SIZE);
   const flip = seed & 1;
   if (kind === 0) {
