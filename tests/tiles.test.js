@@ -44,3 +44,57 @@ test('16px tiles render into bounded, reusable, fully populated chunks', () => {
   assert.equal(created.length,4, 'least recently used chunk should be rebuilt');
   assert.throws(() => new TileGround({cacheLimit:0}),RangeError);
 });
+
+
+test('every forest motif stays inside its opaque 16px cell and retains all five ground types', () => {
+  const commands = [];
+  let color = '';
+  const ctx = {
+    set fillStyle(value) { color = value; },
+    fillRect(x, y, w, h) { commands.push({x, y, w, h, color}); }
+  };
+  const ground = new TileGround({createCanvas: () => ({getContext: () => ctx})});
+  ground.makeChunk(-2, 3);
+  const bases = commands.filter(({w, h}) => w === TILE_SIZE && h === TILE_SIZE);
+  assert.equal(bases.length, CHUNK_TILES ** 2, 'each cell must begin with one complete opaque base fill');
+  assert.equal(new Set(bases.map(({color}) => color)).size, 5);
+  assert.equal(new Set(bases.map(({x, y}) => x + ',' + y)).size, CHUNK_TILES ** 2);
+  assert.ok(commands.length > bases.length * 2, 'ground motifs should have visible pixel details');
+  for (const {x, y, w, h, color} of commands) {
+    assert.ok([x, y, w, h].every(Number.isInteger));
+    assert.ok(w > 0 && h > 0 && x >= 0 && y >= 0);
+    assert.ok(x + w <= (Math.floor(x / TILE_SIZE) + 1) * TILE_SIZE,
+      'motif must not bleed into the neighboring tile horizontally');
+    assert.ok(y + h <= (Math.floor(y / TILE_SIZE) + 1) * TILE_SIZE,
+      'motif must not bleed into the neighboring tile vertically');
+    assert.ok(/^#[0-9a-f]{6}$/i.test(color), 'motif colors remain fully opaque');
+  }
+});
+
+test('tile rasterization remains identical after cache eviction and chunk pan has no gaps', () => {
+  const createCanvas = () => {
+    const commands = [];
+    let color = '';
+    const ctx = {
+      set fillStyle(value) { color = value; },
+      fillRect(...args) { commands.push([color, ...args]); }
+    };
+    return {commands, getContext: () => ctx};
+  };
+  const ground = new TileGround({createCanvas, cacheLimit:1});
+  const first = ground.getChunk(-1, 2).commands;
+  ground.getChunk(0, 2);
+  assert.deepEqual(ground.getChunk(-1, 2).commands, first,
+    'eviction must not change random detail placement');
+  const drawn = [];
+  ground.draw({drawImage(image, x, y) { drawn.push([x, y]); }}, -260, -1, 270, 257);
+  assert.equal(drawn.length, 12);
+  const positions = new Set(drawn.map(([x, y]) => x + ',' + y));
+  assert.equal(positions.size, 12);
+  for (let y = -1; y <= 1; y++) {
+    for (let x = -2; x <= 1; x++) {
+      assert.ok(positions.has(x * CHUNK_SIZE + ',' + y * CHUNK_SIZE),
+        'negative, zero and positive chunks must tessellate without missing cells');
+    }
+  }
+});
