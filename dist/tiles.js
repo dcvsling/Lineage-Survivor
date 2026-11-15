@@ -25,6 +25,32 @@ export function visibleChunkBounds(minX, minY, maxX, maxY) {
   };
 }
 
+/** Render a complete opaque 16×16 forest cell; every detail stays inside its cell. */
+function paintTile(c, x, y, kind, seed) {
+  c.fillStyle = ['#182b20', '#1b3022', '#203628', '#192d21', '#25362b'][kind];
+  c.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+  const flip = seed & 1;
+  if (kind === 0) {
+    // Dark leaf litter, deliberately sparse to retain a readable battlefield.
+    c.fillStyle = '#22372a'; c.fillRect(x + 3 + 8 * flip, y + 11, 2, 1);
+    c.fillStyle = '#14271d'; c.fillRect(x + 9 - 5 * flip, y + 4, 3, 1);
+  } else if (kind === 1) {
+    // Ferns: staggered fronds echo the same low-resolution silhouette.
+    c.fillStyle = '#314934'; c.fillRect(x + 5, y + 9, 2, 4); c.fillRect(x + 9, y + 6, 2, 5);
+    c.fillStyle = '#40583b'; c.fillRect(x + 4, y + 8, 4, 1); c.fillRect(x + 8, y + 5, 4, 1);
+  } else if (kind === 2) {
+    c.fillStyle = '#2a4431'; c.fillRect(x + 2, y + 3, 7, 3); c.fillRect(x + 9, y + 10, 5, 2);
+    c.fillStyle = '#39503a'; c.fillRect(x + 4 + flip, y + 3, 3, 1);
+  } else if (kind === 3) {
+    c.fillStyle = '#3a513b'; c.fillRect(x + 7, y + 2, 2, 7); c.fillRect(x + 4, y + 8, 3, 2);
+    c.fillStyle = '#496247'; c.fillRect(x + 6, y + 5, 1, 2); c.fillRect(x + 9, y + 4 + flip, 2, 1);
+  } else {
+    c.fillStyle = '#3f4c40'; c.fillRect(x + 3, y + 8, 9, 5);
+    c.fillStyle = '#536052'; c.fillRect(x + 5, y + 7, 5, 2);
+    c.fillStyle = '#61705d'; c.fillRect(x + 6 + flip, y + 7, 2, 1);
+  }
+}
+
 export class TileGround {
   constructor({ createCanvas = () => document.createElement('canvas'), cacheLimit = 24 } = {}) {
     if (!Number.isInteger(cacheLimit) || cacheLimit < 1) throw new RangeError('Invalid chunk cache limit');
@@ -42,19 +68,8 @@ export class TileGround {
     for (let row = 0; row < CHUNK_TILES; row++) {
       for (let col = 0; col < CHUNK_TILES; col++) {
         const x = col * TILE_SIZE, y = row * TILE_SIZE;
-        const kind = tileKind(chunkX * CHUNK_TILES + col, chunkY * CHUNK_TILES + row);
-        c.fillStyle = ['#182b20', '#1b3022', '#203628', '#192d21', '#25362b'][kind];
-        c.fillRect(x, y, TILE_SIZE, TILE_SIZE);
-        if (kind === 1) {
-          c.fillStyle = '#314934'; c.fillRect(x + 5, y + 9, 2, 4); c.fillRect(x + 9, y + 6, 2, 5);
-        } else if (kind === 2) {
-          c.fillStyle = '#2a4431'; c.fillRect(x + 2, y + 3, 7, 3); c.fillRect(x + 9, y + 10, 5, 2);
-        } else if (kind === 3) {
-          c.fillStyle = '#3a513b'; c.fillRect(x + 7, y + 2, 2, 7); c.fillRect(x + 4, y + 8, 3, 2);
-        } else if (kind === 4) {
-          c.fillStyle = '#3f4c40'; c.fillRect(x + 3, y + 8, 9, 5);
-          c.fillStyle = '#536052'; c.fillRect(x + 5, y + 7, 5, 2);
-        }
+        const worldX = chunkX * CHUNK_TILES + col, worldY = chunkY * CHUNK_TILES + row;
+        paintTile(c, x, y, tileKind(worldX, worldY), hashTile(worldX, worldY));
       }
     }
     return canvas;
