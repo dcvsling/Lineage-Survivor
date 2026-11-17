@@ -33,7 +33,8 @@ export class Renderer {
   const c=this.ctx,boss=q.type==='boss',flash=q.hit>0&&(!q.hero||Math.floor(t*16)%2===0);
   c.save();c.translate(Math.round(q.x),Math.round(q.y));if(boss)c.scale(2,2);
   c.fillStyle='#02080577';c.beginPath();c.ellipse(0,5,q.type==='fast'?15:12,5,0,0,7);c.fill();
-  c.translate(0,Math.sin(t*(q.type==='fast'?15:8)+q.x));
+  // Keep the 16px-style sprite's rectangular pixels crisp while animating.
+  c.translate(0,Math.round(Math.sin(t*(q.type==='fast'?15:8)+q.x)));
   const color=flash?'#eee4c7':q.slowTimer>0?'#8ec6da':q.hero?(q.type==='mage'?'#9b85c0':q.type==='elf'?'#91b673':'#a3b7be'):(boss?'#9b6b48':q.type==='ranged'?'#94739f':q.type==='fast'?'#b69368':'#6d8a57');
   if(q.type==='fast'&&!q.hero){
    // Low, long-bodied dusk hound: recognizably unlike upright infantry.
@@ -69,7 +70,7 @@ export class Renderer {
    }
   }
   if(q.hero){c.strokeStyle=q.evolved?'#f0d58c':'#b9d2b288';c.lineWidth=1;c.beginPath();c.ellipse(0,8,13,4,0,0,Math.PI*2);c.stroke();}
-  if(!q.hero&&q.hp<q.maxHp){const y=boss?-43:q.type==='ranged'?-33:q.type==='fast'?-26:-30;c.fillStyle='#261916';c.fillRect(-10,y,20,2);c.fillStyle='#b87359';c.fillRect(-10,y,20*Math.max(0,q.hp/q.maxHp),2);}
+  if(!q.hero&&q.hp<q.maxHp){const y=boss?-43:q.type==='ranged'?-33:q.type==='fast'?-26:-30;c.fillStyle='#261916';c.fillRect(-10,y,20,2);c.fillStyle='#b87359';c.fillRect(-10,y,Math.round(20*Math.max(0,Math.min(1,q.hp/q.maxHp))),2);}
   c.restore();
  }
 }
