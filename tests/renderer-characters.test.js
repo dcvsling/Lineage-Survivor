@@ -10,12 +10,13 @@ const subjects = [
 
 function characterCommands(subject, t = 0) {
   const calls = [];
-  let fillStyle = '';
+  let fillStyle = '', strokeStyle = '';
   const ctx = {
     save() {}, restore() {}, beginPath() {}, ellipse() {}, fill() {},
-    arc() {}, stroke() {}, scale() {},
+    arc() {}, stroke() { calls.push({kind:'stroke',values:[],color:strokeStyle}); }, scale() {},
     translate(x, y) { calls.push({kind:'translate', values:[x,y]}); },
     set fillStyle(color) { fillStyle = color; },
+    set strokeStyle(color) { strokeStyle = color; },
     fillRect(x, y, w, h) { calls.push({kind:'rect', values:[x,y,w,h], color:fillStyle}); }
   };
   const q = {x:64.35, y:76.6, hp:3.75, maxHp:10, hit:0, warning:0, ...subject};
