@@ -108,3 +108,15 @@ test('narrow-viewport joystick pointer moves the player and releases cleanly', a
   const secondX = Number(after.match(/座標: \((\d+),\s*\d+\)/)?.[1]);
   expect(secondX).toBeGreaterThan(firstX+20);
 });
+
+test('paused console shows ECS timers and current combo state without enabling commands', async ({page}) => {
+  await beginRun(page);
+  await page.keyboard.press('Escape');
+  const section = await openDiagnostics(page);
+  expect(await runCommand(section,'help')).toContain('cooldowns');
+  expect(await runCommand(section,'combos')).toContain('尚未啟用');
+  expect(await runCommand(section,'cooldowns')).toContain('職業技:');
+  expect(await runCommand(section,'cooldowns')).toContain('未習得');
+  expect(await runCommand(section,'combos invalid')).toContain('未知指令');
+  await expect(page.locator('#modal')).toBeVisible();
+});
