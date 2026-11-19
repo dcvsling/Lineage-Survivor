@@ -41,7 +41,7 @@ test('console combos derives both spell combinations and ranges without mutating
  const plain=new Engine('mage',{},42);
  plain.upgrades.orb=3;
  plain.upgrades.lightning=3;
- assert.doesNotMatch(executeCommand('combos',plain).message,/魂焰牽引/);
+ assert.ok(executeCommand('combos',plain).message.startsWith('組合: 雷焰共鳴 | 待解鎖: 魂焰牽引'));
  assert.equal(executeCommand('combos',null).ok,false);
 });
 
