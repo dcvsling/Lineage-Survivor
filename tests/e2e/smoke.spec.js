@@ -120,3 +120,19 @@ test('paused console shows ECS timers and current combo state without enabling c
   expect(await runCommand(section,'combos invalid')).toContain('未知指令');
   await expect(page.locator('#modal')).toBeVisible();
 });
+
+test('paused build summary and console show missing combo unlock requirements', async ({page}) => {
+  await beginRun(page);
+  await page.keyboard.press('Escape');
+  const summary = page.locator('#modal details.build-summary');
+  await summary.locator('summary').click();
+  await expect(summary).toContainText('雷焰共鳴 · 解鎖進度');
+  await expect(summary).toContainText('聖焰環 0/3 階');
+  await expect(summary).toContainText('雷霆誓約 0/3 階');
+  await expect(summary).toContainText('獵魂羅盤');
+  const commands = await openDiagnostics(page);
+  const result = await runCommand(commands, 'combos');
+  expect(result).toContain('待解鎖:');
+  expect(result).toContain('下局出發前選擇');
+  await expect(page.locator('#modal')).toBeVisible();
+});

@@ -42,3 +42,22 @@ test('relic-aware summary and pickup previews match real run state',()=>{
   assert.ok(by('relic').description.length>10);
  }
 });
+
+test('build summary shows locked combo conditions and removes them when fulfilled', () => {
+ const g=new Engine('elf',{},7);g.upgrades.orb=2;g.upgrades.lightning=3;
+ const before=JSON.stringify(g);const rows=buildSummary(g);
+ const thunder=rows.find(row=>row.id==='combo-progress:thunderflame');
+ const soul=rows.find(row=>row.id==='combo-progress:soulflare');
+ assert.equal(thunder.active,true);
+ assert.ok(thunder.description.includes('聖焰環 2/3 階'));
+ assert.ok(!thunder.description.includes('雷霆誓約'));
+ assert.ok(soul.description.includes('獵魂羅盤'));
+ assert.equal(rows.some(row=>row.id==='combo:thunderflame'),false);
+ assert.equal(JSON.stringify(g),before);
+ g.upgrades.orb=3;const updated=buildSummary(g);
+ assert.equal(updated.some(row=>row.id==='combo-progress:thunderflame'),false);
+ assert.equal(updated.some(row=>row.id==='combo:thunderflame'),true);
+ assert.ok(updated.find(row=>row.id==='combo-progress:soulflare').description.includes('下局出發前選擇'));
+ const full=new Engine('elf',{},7,'compass');full.upgrades.orb=3;full.upgrades.lightning=3;
+ assert.equal(buildSummary(full).some(row=>row.id.startsWith('combo-progress:')),false);
+});

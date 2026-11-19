@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Engine} from '../dist/engine.js';
-import {activeSpellCombos, lightningInterval, orbRange, SPELL_COMBOS} from '../dist/spell-combos.js';
+import {activeSpellCombos, spellComboProgress, lightningInterval, orbRange, SPELL_COMBOS} from '../dist/spell-combos.js';
 import {buildSummary, upgradeInfo} from '../dist/build-info.js';
 
 const close = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} != ${expected}`);
@@ -135,4 +135,28 @@ test('compass upgrade preview, build summary and lightning cadence reflect combi
   const plain = new Engine('elf', {}, 7);
   plain.upgrades.orb = 2;
   assert.doesNotMatch(upgradeInfo('elf', 'orb', 2, plain).description, /魂焰牽引/);
+});
+
+test('combo unlock progress enumerates missing ranks and relic without state mutation', () => {
+  const game = new Engine('mage', {}, 7);
+  const before = JSON.stringify(game);
+  const rows = spellComboProgress(game.upgrades, game.relicId);
+  assert.deepEqual(rows.map(row => row.id), ['thunderflame', 'soulflare']);
+  assert.deepEqual(rows[0].missing, ['聖焰環 0/3 階', '雷霆誓約 0/3 階']);
+  assert.deepEqual(rows[1].missing, ['聖焰環 0/3 階', '需裝備獵魂羅盤（下局出發前選擇）']);
+  assert.deepEqual(rows[0].requirements.map(req => [req.id, req.current, req.required, req.met]),
+    [['orb', 0, 3, false], ['lightning', 0, 3, false]]);
+  assert.equal(JSON.stringify(game), before);
+  assert.equal(spellComboProgress(null)[0].active, false);
+  assert.deepEqual(spellComboProgress({orb:Infinity, lightning:NaN}, 'compass')[0].missing,
+    ['聖焰環 0/3 階', '雷霆誓約 0/3 階']);
+  for (const relic of ['none', 'compass', 'ward']) {
+    for (const orb of [0, 2, 3, 5]) for (const lightning of [0, 2, 3, 5]) {
+      const upgrades = {orb, lightning};
+      const active = activeSpellCombos(upgrades, relic).map(combo => combo.id);
+      const progress = spellComboProgress(upgrades, relic);
+      assert.deepEqual(progress.filter(row => row.active).map(row => row.id), active);
+      for (const row of progress) assert.equal(row.active, row.missing.length === 0);
+    }
+  }
 });
