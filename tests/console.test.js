@@ -41,7 +41,7 @@ test('console combos derives both spell combinations and ranges without mutating
  const plain=new Engine('mage',{},42);
  plain.upgrades.orb=3;
  plain.upgrades.lightning=3;
- assert.doesNotMatch(executeCommand('combos',plain).message,/魂焰牽引/);
+ assert.ok(executeCommand('combos',plain).message.startsWith('組合: 雷焰共鳴 | 待解鎖: 魂焰牽引'));
  assert.equal(executeCommand('combos',null).ok,false);
 });
 
@@ -71,4 +71,15 @@ test('console cooldowns read authoritative ECS timers and reject writes', () => 
  assert.equal(executeCommand('cooldowns extra',g).ok,false);
  assert.equal(executeCommand('combos;alert(1)',g).ok,false);
  assert.equal(executeCommand('cooldowns',{ecs:{getComponent:()=>undefined},playerEntityId:1}).ok,false);
+});
+
+test('console combos explains pending unlock conditions without mutating the run', () => {
+ const game=new Engine('knight',{},42);game.upgrades.orb=2;game.upgrades.lightning=3;
+ const before=JSON.stringify(game),info=executeCommand('combos',game);
+ assert.equal(info.ok,true);
+ assert.ok(info.message.includes('雷焰共鳴：聖焰環 2/3 階'));
+ assert.ok(info.message.includes('魂焰牽引：聖焰環 2/3 階、需裝備獵魂羅盤'));
+ assert.equal(JSON.stringify(game),before);
+ const full=new Engine('knight',{},42,'compass');full.upgrades.orb=3;full.upgrades.lightning=3;
+ assert.ok(executeCommand('combos',full).message.includes('待解鎖: 全部解鎖'));
 });

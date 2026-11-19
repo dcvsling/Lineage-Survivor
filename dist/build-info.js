@@ -1,6 +1,6 @@
 /** Presentation-only descriptions. No simulation state is changed here. */
 import {RELICS,normalizeRelic} from './relics.js';
-import {activeSpellCombos,lightningInterval,orbRange} from './spell-combos.js';
+import {activeSpellCombos,spellComboProgress,lightningInterval,orbRange} from './spell-combos.js';
 import {CLASSES,UPGRADES,ABILITIES} from './engine.js';
 const EVOLUTIONS={weapon:{knight:'破曉月鋼斬',elf:'疾風星雨',mage:'雙星焚界'},orb:'熾天聖焰環',lightning:'天罰雷霆'};
 const BASE={knight:{damage:23,interval:.72},elf:{damage:26,interval:.65},mage:{damage:34,interval:1.05}};
@@ -86,6 +86,10 @@ export function buildSummary(game={}){
   });
   const weapon=rank(equipment.weapon),armor=rank(equipment.armor),boots=rank(equipment.boots);
   for(const combo of activeSpellCombos(upgrades,relic))entries.push({id:`combo:${combo.id}`,name:combo.name,active:true,description:combo.description,stats:{...(combo.lightningIntervalMultiplier?{lightningIntervalMultiplier:combo.lightningIntervalMultiplier}:{}),...(combo.orbRangeBonus?{orbRangeBonus:combo.orbRangeBonus}:{})}});
+  for(const progress of spellComboProgress(upgrades,relic)){
+    if(progress.active)continue;
+    entries.push({id:`combo-progress:${progress.id}`,name:`${progress.name} · 解鎖進度`,active:true,description:`尚需：${progress.missing.join('；')}`});
+  }
   entries.push({id:'equipment',name:'傳承裝備',active:true,description:`武器傷害 × ${fmt(1+weapon*.08)}；鎧甲生命 +${armor*10}、減傷 ${armor}；戰靴基礎速度 +${boots*5}`});
   entries.push({id:'ability',name:ABILITIES[c].name,active:true,description:`冷卻 ${game?.ability?.cooldown??ABILITIES[c].cooldown*(relic==='hourglass'?.75:1)} 秒；${ABILITIES[c].description}`});
   entries.push({id:'relic',name:RELICS[relic].name,active:true,description:RELICS[relic].description+(relic==='ward'?` 目前${game?.relicCooldown>0?'充能剩餘 '+Math.ceil(game.relicCooldown)+' 秒':'可抵擋飛射攻擊'}。`:'')});

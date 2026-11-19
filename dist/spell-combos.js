@@ -21,6 +21,24 @@ export const SPELL_COMBOS = Object.freeze({
 });
 
 const rank = value => Number.isInteger(value) && value > 0 ? Math.min(5, value) : 0;
+const SPELL_LABELS = Object.freeze({orb:'聖焰環', lightning:'雷霆誓約'});
+const RELIC_LABELS = Object.freeze({compass:'獵魂羅盤'});
+
+/** Read-only, per-condition unlock progress. No new simulation or save state. */
+export function spellComboProgress(upgrades, relicId = 'none') {
+  return Object.values(SPELL_COMBOS).map(combo => {
+    const requirements = Object.entries(combo.required).map(([id, required]) => {
+      const current = rank(upgrades?.[id]);
+      return {id, name:SPELL_LABELS[id] ?? id, current, required, met:current >= required};
+    });
+    const missing = requirements.filter(req => !req.met)
+      .map(req => `${req.name} ${req.current}/${req.required} 階`);
+    const relicEquipped = !combo.requiredRelic || relicId === combo.requiredRelic;
+    if (!relicEquipped) missing.push(`需裝備${RELIC_LABELS[combo.requiredRelic] ?? combo.requiredRelic}（下局出發前選擇）`);
+    return {id:combo.id, name:combo.name, active:missing.length === 0,
+      requirements, requiredRelic:combo.requiredRelic ?? null, relicEquipped, missing};
+  });
+}
 
 export function activeSpellCombos(upgrades, relicId = 'none') {
   if (!upgrades || typeof upgrades !== 'object') return [];
