@@ -64,8 +64,16 @@ export function upgradeInfo(classId,id,currentLevel=0,context={}){
   const before=activeSpellCombos({...context?.upgrades,[id]:r},context?.relicId);
   const after=activeSpellCombos({...context?.upgrades,[id]:nextLevel},context?.relicId);
   const unlocked=after.filter(combo=>!before.some(existing=>existing.id===combo.id));
+  // Preview the ranks AFTER taking this card; never mutate the live run.
+  const pending=!maxed&&(id==='orb'||id==='lightning')
+    ? spellComboProgress({...context?.upgrades,[id]:nextLevel},context?.relicId)
+      .filter(combo=>!combo.active&&combo.requirements.some(requirement=>requirement.id===id))
+      .map(combo=>`${combo.name}：尚需 ${combo.missing.join('、')}`)
+    : [];
   const description=maxed?`已滿階：${currentDescription}`:`${changeDescription(c,id,current,next)}${evolves?`。進化為「${skillName(c,id,5)}」`:''}`;
-  return {id,name:skillName(c,id,nextLevel),currentLevel:r,nextLevel,maxed,evolves,evolutionName:Object.hasOwn(EVOLUTIONS,id)?skillName(c,id,5):null,currentDescription,nextDescription,current,next,description:description+(unlocked.length?`；解鎖${unlocked.map(combo=>combo.name).join('、')}`:'')};
+  const unlockText=unlocked.length?`；解鎖${unlocked.map(combo=>combo.name).join('、')}`:'';
+  const progressText=pending.length?`；選擇後組合進度：${pending.join('；')}`:'';
+  return {id,name:skillName(c,id,nextLevel),currentLevel:r,nextLevel,maxed,evolves,evolutionName:Object.hasOwn(EVOLUTIONS,id)?skillName(c,id,5):null,currentDescription,nextDescription,current,next,description:description+unlockText+progressText};
 }
 export function buildSummary(game={}){
   const c=classKey(game?.classId),upgrades=game?.upgrades||{},equipment=game?.equipment||{},relic=normalizeRelic(game?.relicId);
