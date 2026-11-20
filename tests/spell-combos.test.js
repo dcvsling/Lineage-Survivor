@@ -160,3 +160,47 @@ test('combo unlock progress enumerates missing ranks and relic without state mut
     }
   }
 });
+
+test('upgrade cards show remaining combo ranks after choosing a spell, without mutating the run', () => {
+  const game = new Engine('knight', {}, 42);
+  game.upgrades.orb = 1;
+  game.upgrades.lightning = 1;
+  const snapshot = JSON.stringify(game);
+  const preview = upgradeInfo('knight', 'orb', 1, game);
+  assert.equal(preview.nextLevel, 2);
+  assert.ok(preview.description.includes('選擇後組合進度'));
+  assert.ok(preview.description.includes('雷焰共鳴：尚需 聖焰環 2/3 階、雷霆誓約 1/3 階'));
+  assert.ok(preview.description.includes('魂焰牽引：尚需 聖焰環 2/3 階、需裝備獵魂羅盤'));
+  assert.ok(!preview.description.includes('聖焰環 1/3 階'));
+  assert.equal(JSON.stringify(game), snapshot);
+});
+
+test('upgrade previews switch from pending to unlock and respect equipped relic requirements', () => {
+  const plain = new Engine('mage', {}, 7);
+  plain.upgrades.orb = 2;
+  plain.upgrades.lightning = 3;
+  const orb = upgradeInfo('mage', 'orb', 2, plain);
+  assert.ok(orb.description.includes('解鎖雷焰共鳴'));
+  assert.ok(!orb.description.includes('雷焰共鳴：尚需'));
+  assert.ok(orb.description.includes('魂焰牽引：尚需 需裝備獵魂羅盤'));
+  const compass = new Engine('mage', {}, 7, 'compass');
+  compass.upgrades.orb = 2;
+  compass.upgrades.lightning = 3;
+  const both = upgradeInfo('mage', 'orb', 2, compass);
+  assert.ok(both.description.includes('解鎖雷焰共鳴、魂焰牽引'));
+  assert.ok(!both.description.includes('選擇後組合進度'));
+});
+
+test('only relevant non-maxed spell cards show pending combos; lightning uses post-choice rank', () => {
+  const game = new Engine('elf', {}, 12, 'ward');
+  game.upgrades.orb = 1;
+  game.upgrades.lightning = 1;
+  const lightning = upgradeInfo('elf', 'lightning', 1, game);
+  assert.ok(lightning.description.includes('雷焰共鳴：尚需 聖焰環 1/3 階、雷霆誓約 2/3 階'));
+  assert.ok(!lightning.description.includes('魂焰牽引：'));
+  for (const id of ['weapon', 'haste', 'vitality', 'speed', 'magnet', 'armor']) {
+    assert.ok(!upgradeInfo('elf', id, 1, game).description.includes('選擇後組合進度'), id);
+  }
+  assert.ok(!upgradeInfo('elf', 'orb', 5, game).description.includes('選擇後組合進度'));
+  assert.ok(!upgradeInfo('elf', 'lightning', 5, game).description.includes('選擇後組合進度'));
+});
