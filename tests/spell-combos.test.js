@@ -134,7 +134,7 @@ test('compass upgrade preview, build summary and lightning cadence reflect combi
   assert.equal(JSON.stringify(game), before);
   const plain = new Engine('elf', {}, 7);
   plain.upgrades.orb = 2;
-  assert.doesNotMatch(upgradeInfo('elf', 'orb', 2, plain).description, /魂焰牽引/);
+  assert.match(upgradeInfo('elf', 'orb', 2, plain).description, /魂焰牽引：尚需 需裝備獵魂羅盤/);
 });
 
 test('combo unlock progress enumerates missing ranks and relic without state mutation', () => {
