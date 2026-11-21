@@ -73,7 +73,7 @@ export function upgradeInfo(classId,id,currentLevel=0,context={}){
   const description=maxed?`已滿階：${currentDescription}`:`${changeDescription(c,id,current,next)}${evolves?`。進化為「${skillName(c,id,5)}」`:''}`;
   const unlockText=unlocked.length?`；解鎖${unlocked.map(combo=>combo.name).join('、')}`:'';
   const progressText=pending.length?`；選擇後組合進度：${pending.join('；')}`:'';
-  return {id,name:skillName(c,id,nextLevel),currentLevel:r,nextLevel,maxed,evolves,evolutionName:Object.hasOwn(EVOLUTIONS,id)?skillName(c,id,5):null,currentDescription,nextDescription,current,next,description:description+unlockText+progressText};
+  return {id,name:skillName(c,id,nextLevel),currentLevel:r,nextLevel,maxed,evolves,evolutionName:Object.hasOwn(EVOLUTIONS,id)?skillName(c,id,5):null,currentDescription,nextDescription,current,next,description:description+unlockText+progressText,baseDescription:description+unlockText,comboProgress:pending};
 }
 export function buildSummary(game={}){
   const c=classKey(game?.classId),upgrades=game?.upgrades||{},equipment=game?.equipment||{},relic=normalizeRelic(game?.relicId);
