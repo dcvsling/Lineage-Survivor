@@ -204,3 +204,24 @@ test('only relevant non-maxed spell cards show pending combos; lightning uses po
   assert.ok(!upgradeInfo('elf', 'orb', 5, game).description.includes('選擇後組合進度'));
   assert.ok(!upgradeInfo('elf', 'lightning', 5, game).description.includes('選擇後組合進度'));
 });
+
+
+test('combo hints expose a separate card section without changing the existing description API', () => {
+  const game = new Engine('knight', {}, 27);
+  game.upgrades.orb = 1;
+  game.upgrades.lightning = 1;
+  const snapshot = JSON.stringify(game);
+  const orb = upgradeInfo('knight', 'orb', 1, game);
+  assert.deepEqual(orb.comboProgress, [
+    '雷焰共鳴：尚需 聖焰環 2/3 階、雷霆誓約 1/3 階',
+    '魂焰牽引：尚需 聖焰環 2/3 階、需裝備獵魂羅盤（下局出發前選擇）'
+  ]);
+  assert.ok(!orb.baseDescription.includes('選擇後組合進度'));
+  assert.equal(orb.description, orb.baseDescription + '；選擇後組合進度：' + orb.comboProgress.join('；'));
+  for (const id of ['weapon', 'haste', 'armor']) {
+    const info = upgradeInfo('knight', id, 0, game);
+    assert.equal(info.baseDescription, info.description);
+    assert.deepEqual(info.comboProgress, []);
+  }
+  assert.equal(JSON.stringify(game), snapshot);
+});

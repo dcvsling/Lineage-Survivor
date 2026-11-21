@@ -18,3 +18,6 @@
 
 .relic-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:20px;text-align:left}.relic-grid section{border:1px solid var(--line);padding:16px}.relic-grid section.equipped{border-color:var(--gold);background:#3a342455}.relic-grid h3{color:var(--gold);margin:0;font-size:17px}.relic-grid button{width:100%;font-size:12px}.relic-grid .relic-preview{font-size:11px;color:#d0d9bd}#skills{flex-wrap:wrap;max-width:65%}
 @media(max-width:700px){.relic-grid{grid-template-columns:1fr}.relic-grid section{padding:12px}#skills{max-width:100%}}
+
+/* Keep long post-pick combo requirements distinct and readable on narrow viewports. */
+.upgrade-options .combo-preview{border-top:1px solid var(--line);padding-top:10px;margin-top:12px;color:#e9d5a5;line-height:1.7;overflow-wrap:anywhere}
