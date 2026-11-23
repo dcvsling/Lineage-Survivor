@@ -86,10 +86,10 @@ async function raster(page, side) {
     }
     // At the respective edge the world x=0 and x=2560 chunk seams
     // project to backing x=163 and x=283. Stay clear of the ancient border
-    // (around x=166/184), the player, tree positions and the marker at y=825.
+    // (around x=166/184), the player, tree positions and the marker at y=825.\n    // The inside-left 1px strip avoids the antialiased border beginning at x≈164.5.
     const seam = side === 'left' ? {
       before:patch(160, 160, 3, 26),
-      after:patch(163, 160, 2, 26)
+      after:patch(163, 160, 1, 26)
     } : {
       before:patch(280, 160, 3, 26),
       after:patch(285, 160, 3, 26)
