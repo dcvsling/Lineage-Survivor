@@ -5,7 +5,7 @@ import {test, expect} from '@playwright/test';
 const harness = '(' + function edgeCameraHarness() {
   let realUpdate;
   const edge = {
-    setup() {
+    setup({corner = false} = {}) {
       if (!game || game.status !== 'playing') throw new Error('Run is not playing');
       realUpdate = game.update.bind(game);
       game.spawnTimer = 100000;
@@ -13,7 +13,7 @@ const harness = '(' + function edgeCameraHarness() {
       game.pickups = [];
       game.effects = [];
       game.projectiles = [];
-      game.player.y = 900;
+      if (!corner) game.player.y = 900;
       game.hurtTimer = 0;
       game.update = () => {}; // Freeze only the animation-loop step, not Engine.
       return this.state();
@@ -46,6 +46,31 @@ const harness = '(' + function edgeCameraHarness() {
         steps++;
       }
       if (steps === 12 || game.status !== 'playing') throw new Error('Engine did not reach edge');
+      return this.state();
+    },
+    corner(side, finish = false) {
+      if (!realUpdate) throw new Error('Fixture not initialized');
+      if (side !== 'top-left' && side !== 'bottom-right') throw new Error('Invalid corner');
+      const top = side === 'top-left', direction = top ? -1 : 1;
+      const target = finish ? (top ? 20 : 2380) : (top ? 100 : 2280);
+      const pending = value => top ? value > target : value < target;
+      let steps = 0;
+      // Both coordinates are advanced by the real normalized movement system.
+      while ((pending(game.player.x) || pending(game.player.y)) && steps < 240) {
+        realUpdate(0.25, {
+          x:pending(game.player.x) ? direction : 0,
+          y:pending(game.player.y) ? direction : 0
+        });
+        steps++;
+      }
+      if (steps === 240 || game.status !== 'playing') throw new Error('Engine did not reach corner');
+      if (!finish) {
+        const marker = top ? -80 : 2480;
+        game.projectiles = [{
+          x:marker, y:marker, vx:0, vy:0, life:100, radius:5,
+          hostile:false, color:'#ff00ff', hitIds:[], pierce:1
+        }];
+      }
       return this.state();
     },
     state() {
@@ -88,7 +113,19 @@ async function raster(page, side) {
     // project to backing x=163 and x=283. Stay clear of the ancient border
     // (around x=166/184), the player, tree positions and the marker at y=825.
     // The inside-left 1px strip avoids the antialiased border beginning at x≈164.5.
-    const seam = side === 'left' ? {
+    // Corner samples cross each chunk seam in the off-world forest, far
+    // from trees, the player and the border. No marker overlaps these strips.
+    const seam = side === 'top-left' ? {
+      xBefore:patch(155, 80, 8, 22),
+      xAfter:patch(163, 80, 8, 22),
+      yBefore:patch(80, 155, 22, 8),
+      yAfter:patch(80, 163, 22, 8)
+    } : side === 'bottom-right' ? {
+      xBefore:patch(275, 300, 8, 26),
+      xAfter:patch(283, 300, 8, 26),
+      yBefore:patch(300, 275, 26, 8),
+      yAfter:patch(300, 283, 26, 8)
+    } : side === 'left' ? {
       before:patch(160, 160, 3, 26),
       after:patch(163, 160, 1, 26)
     } : {
@@ -119,14 +156,14 @@ async function raster(page, side) {
   }, side);
 }
 
-function expectCameraImage(image) {
+function expectCameraImage(image, playerY = 900) {
   expect(image.cssWidth).toBe(699);
   expect(image.cssHeight).toBe(700);
   expect(image.width).toBe(350);
   expect(image.height).toBe(350);
   expect(image.smoothing).toBe(false);
   expect(image.state.status).toBe('playing');
-  expect(image.state.playerY).toBe(900);
+  if (playerY !== null) expect(image.state.playerY).toBe(playerY);
   expect(image.marker?.count).toBeGreaterThan(8);
   const expectedX = 175 + (image.state.markerX - image.state.playerX) * 0.6;
   const expectedY = 175 + (image.state.markerY - image.state.playerY) * 0.6;
@@ -192,5 +229,47 @@ test('real Engine follows X=20 and 2380; actual Canvas forest covers both bounda
   expectCameraImage(rightEdgeImage);
   expect(rightApproachImage.marker.x - rightEdgeImage.marker.x).toBeGreaterThan(15);
   expectTerrainOnBothSides(rightEdgeImage);
+  expect(errors).toEqual([]);
+});
+
+test('real Engine follows both axes into opposite world corners; Canvas forest crosses X and Y seams', async ({page}) => {
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.setViewportSize({width:699, height:700});
+  await page.route('**/main.js', async route => {
+    const response = await route.fetch();
+    const moduleSource = await response.text();
+    if (!moduleSource.includes('requestAnimationFrame(frame)')) {
+      throw new Error('Camera E2E module hook changed');
+    }
+    await route.fulfill({response, body:moduleSource + '\n' + harness});
+  });
+  await page.goto('/');
+  await expect(page.locator('#classes .class-card')).toHaveCount(3);
+  await page.locator('#start').click();
+  await page.getByRole('button', {name:'我準備好了，出發'}).click();
+  await expect(page.locator('#hud')).toBeVisible();
+  await page.evaluate(() => globalThis.__edgeCameraE2E.setup({corner:true}));
+
+  for (const side of ['top-left', 'bottom-right']) {
+    const target = side === 'top-left' ? 20 : 2380;
+    const near = await page.evaluate(side => globalThis.__edgeCameraE2E.corner(side), side);
+    expect(Math.abs(near.playerX - target)).toBeGreaterThan(30);
+    expect(Math.abs(near.playerY - target)).toBeGreaterThan(30);
+    const approach = await raster(page, side);
+    expectCameraImage(approach, null);
+
+    const edge = await page.evaluate(side => globalThis.__edgeCameraE2E.corner(side, true), side);
+    expect(edge.playerX).toBe(target);
+    expect(edge.playerY).toBe(target);
+    expect(edge.markerX).toBe(near.markerX);
+    expect(edge.markerY).toBe(near.markerY);
+    const image = await raster(page, side);
+    expectCameraImage(image, target);
+    const direction = side === 'top-left' ? 1 : -1;
+    expect(direction * (image.marker.x - approach.marker.x)).toBeGreaterThan(15);
+    expect(direction * (image.marker.y - approach.marker.y)).toBeGreaterThan(15);
+    expectTerrainOnBothSides(image);
+  }
   expect(errors).toEqual([]);
 });
