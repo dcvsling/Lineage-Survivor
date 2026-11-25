@@ -23,6 +23,28 @@ globalThis.__cameraE2E = {
     cameraAdvance = dt => originalUpdate(dt, {x:1, y:0});
     return this.state();
   },
+  setupAspect() {
+    this.setup();
+    const p = game.player;
+    // Two inner markers remain visible in both orientations; the outer
+    // markers are deliberately inside just one axis of the visible extent.
+    game.projectiles = [
+      [100, 0, '#ff00ff'],
+      [0, 100, '#00ffff'],
+      [220, 0, '#ff0000'],
+      [0, 220, '#0000ff']
+    ].map(([dx,dy,color]) => ({
+      x:p.x + dx, y:p.y + dy, vx:0, vy:0, life:100, radius:5,
+      hostile:false, color, hitIds:[], pierce:1
+    }));
+    return this.aspectState();
+  },
+  aspectState() {
+    return {
+      playerX:game.player.x, playerY:game.player.y, status:game.status,
+      landmarks:game.projectiles.map(({x,y,color}) => ({x,y,color}))
+    };
+  },
   advance(dt) {
     if (!cameraAdvance) throw new Error('Fixture not initialized');
     cameraAdvance(dt); // Genuine Engine movement, without frame-time jitter.
@@ -122,5 +144,85 @@ test('699→700 CSS px changes real Canvas camera scale within the same run, the
   expect(Math.abs(followed.marker.x - expectedX)).toBeLessThan(2);
   expect(followed.marker.x).toBeLessThan(wide.marker.x - 8);
   expect(followed.state.status).toBe('playing');
+  expect(errors).toEqual([]);
+});
+
+async function aspectRaster(page) {
+  return page.evaluate(async () => {
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const canvas = document.getElementById('world');
+    const {width,height} = canvas;
+    const ctx = canvas.getContext('2d');
+    const data = ctx.getImageData(0,0,width,height).data;
+    const colors = ['#ff00ff','#00ffff','#ff0000','#0000ff'];
+    const sums = Object.fromEntries(colors.map(color => [color,{count:0,x:0,y:0}]));
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i], g = data[i+1], b = data[i+2];
+      const color = r > 235 && g < 20 && b > 235 ? colors[0]
+        : r < 20 && g > 235 && b > 235 ? colors[1]
+        : r > 235 && g < 20 && b < 20 ? colors[2]
+        : r < 20 && g < 20 && b > 235 ? colors[3] : null;
+      if (!color || data[i+3] !== 255) continue;
+      const pixel = i / 4;
+      const sum = sums[color];
+      sum.count++;
+      sum.x += pixel % width;
+      sum.y += Math.floor(pixel / width);
+    }
+    const markers = Object.fromEntries(colors.map(color => {
+      const {count,x,y} = sums[color];
+      return [color,count ? {count,x:x/count,y:y/count} : null];
+    }));
+    return {
+      cssWidth:innerWidth, cssHeight:innerHeight, width,height,
+      smoothing:ctx.imageSmoothingEnabled, markers,
+      state:globalThis.__cameraE2E.aspectState()
+    };
+  });
+}
+
+test('same run portrait and landscape Canvas swap axis visibility and preserve world landmarks', async ({page}) => {
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.route('**/main.js', async route => {
+    const response = await route.fetch();
+    const moduleSource = await response.text();
+    if (!moduleSource.includes('requestAnimationFrame(frame)')) {
+      throw new Error('Camera fixture injection point changed');
+    }
+    await route.fulfill({response, body:moduleSource + '\n' + harness});
+  });
+  await page.goto('/');
+  await expect(page.locator('#classes .class-card')).toHaveCount(3);
+  await page.locator('#start').click();
+  await page.getByRole('button', {name:'我準備好了，出發'}).click();
+  await expect(page.locator('#hud')).toBeVisible();
+  const before = await page.evaluate(() => globalThis.__cameraE2E.setupAspect());
+  expect(before.status).toBe('playing');
+
+  const portrait = {width:390,height:780,backingWidth:195,backingHeight:390,scale:.60,hidden:'#ff0000'};
+  const landscape = {width:844,height:390,backingWidth:422,backingHeight:195,scale:.72,hidden:'#0000ff'};
+  // Rotate back as well: a marker clipped in one orientation must reappear
+  // at its original projected position, without another game or mutation.
+  for (const view of [portrait,landscape,portrait]) {
+    await page.setViewportSize({width:view.width,height:view.height});
+    const image = await aspectRaster(page);
+    expect([image.cssWidth,image.cssHeight]).toEqual([view.width,view.height]);
+    expect([image.width,image.height]).toEqual([view.backingWidth,view.backingHeight]);
+    expect(image.smoothing).toBe(false);
+    expect(image.state).toEqual(before);
+    for (const landmark of before.landmarks) {
+      const marker = image.markers[landmark.color];
+      if (landmark.color === view.hidden) {
+        expect(marker, 'offscreen marker ' + landmark.color).toBeNull();
+        continue;
+      }
+      expect(marker?.count, 'visible marker ' + landmark.color).toBeGreaterThan(8);
+      const expectedX = view.backingWidth / 2 + (landmark.x - before.playerX) * view.scale;
+      const expectedY = view.backingHeight / 2 + (landmark.y - before.playerY) * view.scale;
+      expect(Math.abs(marker.x - expectedX)).toBeLessThan(2);
+      expect(Math.abs(marker.y - expectedY)).toBeLessThan(2);
+    }
+  }
   expect(errors).toEqual([]);
 });
