@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {Engine} from '../dist/engine.js';
-import {activeSpellCombos, spellComboProgress, lightningInterval, orbRange, SPELL_COMBOS} from '../dist/spell-combos.js';
+import {activeSpellCombos, spellComboProgress, lightningInterval, orbRange, lightningTargets, SPELL_COMBOS} from '../dist/spell-combos.js';
 import {buildSummary, upgradeInfo} from '../dist/build-info.js';
 
 const close = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} != ${expected}`);
@@ -141,7 +141,7 @@ test('combo unlock progress enumerates missing ranks and relic without state mut
   const game = new Engine('mage', {}, 7);
   const before = JSON.stringify(game);
   const rows = spellComboProgress(game.upgrades, game.relicId);
-  assert.deepEqual(rows.map(row => row.id), ['thunderflame', 'soulflare']);
+  assert.deepEqual(rows.map(row => row.id), ['thunderflame', 'soulflare', 'thunderEcho']);
   assert.deepEqual(rows[0].missing, ['聖焰環 0/3 階', '雷霆誓約 0/3 階']);
   assert.deepEqual(rows[1].missing, ['聖焰環 0/3 階', '需裝備獵魂羅盤（下局出發前選擇）']);
   assert.deepEqual(rows[0].requirements.map(req => [req.id, req.current, req.required, req.met]),
@@ -150,7 +150,7 @@ test('combo unlock progress enumerates missing ranks and relic without state mut
   assert.equal(spellComboProgress(null)[0].active, false);
   assert.deepEqual(spellComboProgress({orb:Infinity, lightning:NaN}, 'compass')[0].missing,
     ['聖焰環 0/3 階', '雷霆誓約 0/3 階']);
-  for (const relic of ['none', 'compass', 'ward']) {
+  for (const relic of ['none', 'compass', 'ward', 'hourglass']) {
     for (const orb of [0, 2, 3, 5]) for (const lightning of [0, 2, 3, 5]) {
       const upgrades = {orb, lightning};
       const active = activeSpellCombos(upgrades, relic).map(combo => combo.id);
@@ -224,4 +224,66 @@ test('combo hints expose a separate card section without changing the existing d
     assert.deepEqual(info.comboProgress, []);
   }
   assert.equal(JSON.stringify(game), snapshot);
+});
+
+test('雷霆回響 activates only for hourglass and rank-three lightning; cadence is independent', () => {
+  for (const relic of ['none','ward','compass','hourglass']) {
+    for (const level of [0,1,2,3,5]) {
+      const upgrades = Object.freeze({orb:3,lightning:level});
+      const bonus = relic === 'hourglass' && level >= 3 ? 1 : 0;
+      assert.equal(lightningTargets(upgrades,relic),level ? level+1+bonus : 0);
+      assert.equal(activeSpellCombos(upgrades,relic).some(c=>c.id==='thunderEcho'),!!bonus);
+      assert.equal(spellComboProgress(upgrades,relic).find(c=>c.id==='thunderEcho').active,!!bonus);
+      close(lightningInterval(upgrades),level>=5?1.17:level>=3?1.8:2);
+    }
+  }
+  assert.equal(lightningTargets({lightning:Infinity},'hourglass'),0);
+});
+
+test('ECS 雷霆回響 hits one additional distinct in-range living enemy, preserving original damage and cadence', () => {
+  for (const [relic,level,orb] of [['none',3,3],['ward',3,3],['compass',3,3],['hourglass',2,3],['hourglass',3,0],['hourglass',3,3],['hourglass',5,3]]) {
+    const game = new Engine('mage',{},42,relic);
+    game.spawnTimer=game.attackTimer=game.orbTimer=100;
+    game.lightningTimer=0;
+    Object.assign(game.upgrades,{lightning:level,orb});
+    const enemies=Array.from({length:8},(_,i)=>{
+      const e=game.spawn('melee');e.x=game.player.x+200+20*i;e.y=game.player.y;e.hp=e.maxHp=1000;return e;
+    });
+    const far=game.spawn('melee');far.x=game.player.x+650;far.y=game.player.y;far.hp=far.maxHp=1000;
+    const dead=game.spawn('melee');dead.x=game.player.x+100;dead.y=game.player.y;dead.hp=0;
+    const expected=level+1+(relic==='hourglass'&&level>=3?1:0);
+    const damage=22+12*level;
+    game.update(1/30);
+    assert.equal(game.damage.lightning,expected*damage);
+    for(const [i,e] of enemies.entries())assert.equal(e.hp,1000-(i<expected?damage:0));
+    assert.equal(far.hp,1000);
+    close(game.ecs.getComponent(game.playerEntityId,'spells').lightningTimer,level===5?1.17:orb>=3&&level>=3?1.8:2);
+    assert.equal(game.potions,relic==='hourglass'?2:3);
+  }
+  const sparse=new Engine('mage',{},42,'hourglass');
+  sparse.spawnTimer=sparse.attackTimer=sparse.orbTimer=100;sparse.lightningTimer=0;sparse.upgrades.lightning=3;
+  const only=sparse.spawn('melee');only.x=sparse.player.x+200;only.y=sparse.player.y;only.hp=only.maxHp=1000;
+  sparse.update(1/30);
+  assert.equal(only.hp,942);assert.equal(sparse.damage.lightning,58);
+});
+
+test('雷霆回響 preview and build summary report actual target cap and potion tradeoff without mutation', () => {
+  const game=new Engine('mage',{},42,'hourglass');
+  game.upgrades.lightning=2;
+  const before=JSON.stringify(game);
+  const preview=upgradeInfo('mage','lightning',2,game);
+  assert.equal(preview.current.targets,3);assert.equal(preview.next.targets,5);
+  assert.match(preview.baseDescription,/解鎖雷霆回響/);
+  assert.equal(JSON.stringify(game),before);
+  game.status='upgrade';game.choices=[{id:'lightning'}];
+  assert.equal(game.chooseUpgrade('lightning'),true);
+  const after=JSON.stringify(game),rows=buildSummary(game);
+  assert.equal(rows.find(e=>e.id==='lightning').stats.targets,5);
+  assert.equal(rows.find(e=>e.id==='combo:thunderEcho').stats.lightningTargetBonus,1);
+  assert.match(rows.find(e=>e.id==='relic').description,/2 瓶/);
+  assert.equal(JSON.stringify(game),after);
+  const plain=new Engine('mage',{},42);
+  plain.upgrades.lightning=2;
+  assert.equal(upgradeInfo('mage','lightning',2,plain).next.targets,4);
+  assert.match(upgradeInfo('mage','lightning',2,plain).description,/需裝備回響沙漏/);
 });

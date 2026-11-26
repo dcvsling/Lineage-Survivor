@@ -1,5 +1,5 @@
 /** Read-only developer commands. No eval, DOM, or save mutations. */
-import {activeSpellCombos, spellComboProgress, lightningInterval, orbRange} from './spell-combos.js';
+import {activeSpellCombos, spellComboProgress, lightningInterval, orbRange, lightningTargets} from './spell-combos.js';
 
 const COMMANDS = Object.freeze(['help', 'status', 'player', 'skills', 'combos', 'cooldowns']);
 const seconds = value => `${Math.max(0, Number.isFinite(value) ? value : 0).toFixed(2)}s`;
@@ -22,7 +22,7 @@ export function executeCommand(input, game) {
       .map(combo=>`${combo.name}：${combo.missing.join('、')}`).join('；')||'全部解鎖';
     const lightning=game.upgrades.lightning>0 ? `${lightningInterval(game.upgrades)}s` : '未習得';
     const orb=game.upgrades.orb>0 ? `${orbRange(game.upgrades, game.relicId)}px` : '未習得';
-    return {ok:true, message:`組合: ${active.map(combo=>combo.name).join(' · ')||'尚未啟用'} | 待解鎖: ${pending} | 雷霆間隔: ${lightning} | 聖焰環半徑: ${orb}`};
+    return {ok:true, message:`組合: ${active.map(combo=>combo.name).join(' · ')||'尚未啟用'} | 待解鎖: ${pending} | 雷霆間隔: ${lightning} | 聖焰環半徑: ${orb} | 雷霆目標上限: ${game.upgrades.lightning>0?lightningTargets(game.upgrades,game.relicId):'未習得'}`};
   }
   // Read ECS components, not copies of legacy Engine fields.
   const ability=game.ecs?.getComponent(game.playerEntityId, 'ability');

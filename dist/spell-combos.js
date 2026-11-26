@@ -17,12 +17,20 @@ export const SPELL_COMBOS = Object.freeze({
     required: Object.freeze({orb: 3}),
     requiredRelic: 'compass',
     orbRangeBonus: 20
+  }),
+  thunderEcho: Object.freeze({
+    id: 'thunderEcho',
+    name: '雷霆回響',
+    description: '裝備回響沙漏且雷霆誓約達第 3 階，每次雷擊最多多命中 1 名敵人；每局仍少 1 瓶治療藥水。',
+    required: Object.freeze({lightning: 3}),
+    requiredRelic: 'hourglass',
+    lightningTargetBonus: 1
   })
 });
 
 const rank = value => Number.isInteger(value) && value > 0 ? Math.min(5, value) : 0;
 const SPELL_LABELS = Object.freeze({orb:'聖焰環', lightning:'雷霆誓約'});
-const RELIC_LABELS = Object.freeze({compass:'獵魂羅盤'});
+const RELIC_LABELS = Object.freeze({compass:'獵魂羅盤', hourglass:'回響沙漏'});
 
 /** Read-only, per-condition unlock progress. No new simulation or save state. */
 export function spellComboProgress(upgrades, relicId = 'none') {
@@ -59,4 +67,12 @@ export function lightningInterval(upgrades) {
   const interval = activeSpellCombos(upgrades).reduce(
     (value, combo) => value * (combo.lightningIntervalMultiplier ?? 1), base);
   return Math.round(interval * 1000) / 1000;
+}
+
+/** Extra targets are distinct enemies, not extra strikes on the same target. */
+export function lightningTargets(upgrades, relicId = 'none') {
+  const level = rank(upgrades?.lightning);
+  if (!level) return 0;
+  return activeSpellCombos(upgrades, relicId).reduce(
+    (count, combo) => count + (combo.lightningTargetBonus ?? 0), level + 1);
 }

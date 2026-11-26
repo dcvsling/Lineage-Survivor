@@ -1,6 +1,6 @@
 /** Presentation-only descriptions. No simulation state is changed here. */
 import {RELICS,normalizeRelic} from './relics.js';
-import {activeSpellCombos,spellComboProgress,lightningInterval,orbRange} from './spell-combos.js';
+import {activeSpellCombos,spellComboProgress,lightningInterval,orbRange,lightningTargets} from './spell-combos.js';
 import {CLASSES,UPGRADES,ABILITIES} from './engine.js';
 const EVOLUTIONS={weapon:{knight:'破曉月鋼斬',elf:'疾風星雨',mage:'雙星焚界'},orb:'熾天聖焰環',lightning:'天罰雷霆'};
 const BASE={knight:{damage:23,interval:.72},elf:{damage:26,interval:.65},mage:{damage:34,interval:1.05}};
@@ -59,6 +59,8 @@ export function upgradeInfo(classId,id,currentLevel=0,context={}){
   if(id==='lightning'){
     current.interval=lightningInterval({...context?.upgrades,lightning:r});
     next.interval=lightningInterval({...context?.upgrades,lightning:nextLevel});
+    current.targets=lightningTargets({...context?.upgrades,lightning:r},context?.relicId);
+    next.targets=lightningTargets({...context?.upgrades,lightning:nextLevel},context?.relicId);
   }
   const currentDescription=describe(c,id,r,current),nextDescription=describe(c,id,nextLevel,next);
   const before=activeSpellCombos({...context?.upgrades,[id]:r},context?.relicId);
@@ -81,7 +83,7 @@ export function buildSummary(game={}){
     const level=rank(upgrades[id],UPGRADES[id].max),stats=statsFor(c,id,level);
     if(id==='magnet'&&relic==='compass')stats.range+=100;
     if(id==='orb'&&level>0)stats.range=orbRange(upgrades,relic);
-    if(id==='lightning'&&level>0)stats.interval=lightningInterval(upgrades);
+    if(id==='lightning'&&level>0){stats.interval=lightningInterval(upgrades);stats.targets=lightningTargets(upgrades,relic);}
     let description=describe(c,id,level,stats);
     if(id==='weapon'){
       stats.equipmentMultiplier=1+rank(equipment.weapon)*.08;stats.effectiveDamage=stats.damage*stats.equipmentMultiplier;stats.interval=BASE[c].interval*Math.pow(.88,rank(upgrades.haste));
@@ -93,7 +95,7 @@ export function buildSummary(game={}){
     return {id,name:skillName(c,id,level),level,active:stats.active,evolved:level>=5&&Object.hasOwn(EVOLUTIONS,id),description,stats};
   });
   const weapon=rank(equipment.weapon),armor=rank(equipment.armor),boots=rank(equipment.boots);
-  for(const combo of activeSpellCombos(upgrades,relic))entries.push({id:`combo:${combo.id}`,name:combo.name,active:true,description:combo.description,stats:{...(combo.lightningIntervalMultiplier?{lightningIntervalMultiplier:combo.lightningIntervalMultiplier}:{}),...(combo.orbRangeBonus?{orbRangeBonus:combo.orbRangeBonus}:{})}});
+  for(const combo of activeSpellCombos(upgrades,relic))entries.push({id:`combo:${combo.id}`,name:combo.name,active:true,description:combo.description,stats:{...(combo.lightningIntervalMultiplier?{lightningIntervalMultiplier:combo.lightningIntervalMultiplier}:{}),...(combo.orbRangeBonus?{orbRangeBonus:combo.orbRangeBonus}:{}),...(combo.lightningTargetBonus?{lightningTargetBonus:combo.lightningTargetBonus}:{})}});
   for(const progress of spellComboProgress(upgrades,relic)){
     if(progress.active)continue;
     entries.push({id:`combo-progress:${progress.id}`,name:`${progress.name} · 解鎖進度`,active:true,description:`尚需：${progress.missing.join('；')}`});
