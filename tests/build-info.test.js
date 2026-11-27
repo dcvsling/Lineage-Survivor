@@ -59,5 +59,5 @@ test('build summary shows locked combo conditions and removes them when fulfille
  assert.equal(updated.some(row=>row.id==='combo:thunderflame'),true);
  assert.ok(updated.find(row=>row.id==='combo-progress:soulflare').description.includes('下局出發前選擇'));
  const full=new Engine('elf',{},7,'compass');full.upgrades.orb=3;full.upgrades.lightning=3;
- assert.equal(buildSummary(full).some(row=>row.id.startsWith('combo-progress:')),false);
+ assert.deepEqual(buildSummary(full).filter(row=>row.id.startsWith('combo-progress:')).map(row=>row.id),['combo-progress:thunderEcho']);
 });

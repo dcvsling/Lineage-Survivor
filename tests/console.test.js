@@ -81,5 +81,15 @@ test('console combos explains pending unlock conditions without mutating the run
  assert.ok(info.message.includes('魂焰牽引：聖焰環 2/3 階、需裝備獵魂羅盤'));
  assert.equal(JSON.stringify(game),before);
  const full=new Engine('knight',{},42,'compass');full.upgrades.orb=3;full.upgrades.lightning=3;
- assert.ok(executeCommand('combos',full).message.includes('待解鎖: 全部解鎖'));
+ assert.ok(executeCommand('combos',full).message.includes('待解鎖: 雷霆回響：需裝備回響沙漏'));
+});
+
+test('console reports hourglass lightning target cap and preserves state', () => {
+ const game=new Engine('mage',{},7,'hourglass');game.upgrades.lightning=3;
+ const before=JSON.stringify(game),result=executeCommand('combos',game);
+ assert.match(result.message,/組合: 雷霆回響/);
+ assert.match(result.message,/雷霆目標上限: 5/);
+ assert.equal(JSON.stringify(game),before);
+ const plain=new Engine('mage',{},7);plain.upgrades.lightning=3;
+ assert.match(executeCommand('combos',plain).message,/雷霆目標上限: 4/);
 });
