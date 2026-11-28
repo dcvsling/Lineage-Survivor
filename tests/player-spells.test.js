@@ -72,3 +72,52 @@ test('ability cooldown ticks only in play, after contact resolves in the same st
   close(ability.cooldown,1-1/30);
   close(game.abilityCooldown,ability.cooldown);
 });
+
+test('lightning diagnostics distinguish eligible casts from actual bonus hits and damage',()=>{
+  const cases=[
+    ['none',3,6,0,0,0],
+    ['ward',3,6,0,0,0],
+    ['compass',3,6,0,0,0],
+    ['hourglass',2,6,0,0,0],
+    ['hourglass',3,0,1,0,0],
+    ['hourglass',3,4,1,0,0],
+    ['hourglass',3,5,1,1,10],
+    ['hourglass',3,6,1,1,10],
+    ['hourglass',5,7,1,1,10]
+  ];
+  for(const [relic,rank,count,eligible,triggered,damage] of cases){
+    const g=new Engine('mage',{},42,relic);
+    g.spawnTimer=g.attackTimer=g.orbTimer=100;
+    g.lightningTimer=0;g.upgrades.lightning=rank;
+    for(let i=0;i<count;i++){
+      const e=g.spawn('melee');e.x=g.player.x+200+i*20;e.y=g.player.y;
+      e.hp=e.maxHp=i===rank+1?10:1000;
+    }
+    const dead=g.spawn('melee');dead.x=g.player.x+100;dead.y=g.player.y;dead.hp=0;
+    const far=g.spawn('melee');far.x=g.player.x+650;far.y=g.player.y;far.hp=far.maxHp=1000;
+    g.update(1/30);
+    assert.deepEqual(g.spellMetrics,{lightningCasts:1,thunderEchoEligibleCasts:eligible,thunderEchoTriggeredCasts:triggered,thunderEchoExtraHits:triggered,thunderEchoExtraDamage:damage},`${relic}/${rank}/${count}`);
+    assert.equal(far.hp,1000);
+    assert.equal(Object.hasOwn(JSON.parse(JSON.stringify(g)),'spellMetrics'),false);
+  }
+});
+
+test('spell diagnostics are per-run, deterministic, and frozen while paused or terminal',()=>{
+  function replay(){
+    const g=new Engine('mage',{},2026,'hourglass');
+    g.spawnTimer=g.attackTimer=g.orbTimer=100;g.lightningTimer=0;g.upgrades.lightning=3;
+    for(let i=0;i<5;i++){const e=g.spawn('melee');e.x=g.player.x+250+i*20;e.y=g.player.y;e.hp=e.maxHp=1000;e.speed=0;}
+    const zero={...g.spellMetrics};
+    g.togglePause();g.update(1/30);assert.deepEqual(g.spellMetrics,zero);
+    g.togglePause();g.update(1/30);
+    assert.equal(g.spellMetrics.thunderEchoExtraHits,1);
+    g.lightningTimer=0;g.update(1/30);
+    assert.equal(g.spellMetrics.thunderEchoExtraHits,2);
+    assert.equal(g.spellMetrics.thunderEchoExtraDamage,116);
+    g.finish('retreat');const frozen={...g.spellMetrics};g.update(1/30);
+    assert.deepEqual(g.spellMetrics,frozen);
+    return {metrics:frozen,world:JSON.stringify(g)};
+  }
+  assert.deepEqual(replay(),replay());
+  assert.deepEqual(new Engine().spellMetrics,{lightningCasts:0,thunderEchoEligibleCasts:0,thunderEchoTriggeredCasts:0,thunderEchoExtraHits:0,thunderEchoExtraDamage:0});
+});

@@ -25,6 +25,14 @@ function verify(g,label){
   assert.ok(g.potions>=0&&g.potions<=3,`${label}: potion range`);
   for(const [key,max]of Object.entries(limits))assert.ok(g[key].length<=max,`${label}: ${key} exceeds ${max}`);
   for(const amount of Object.values(g.damage))assert.ok(Number.isFinite(amount)&&amount>=0,`${label}: invalid damage`);
+  const m=g.spellMetrics;
+  for(const key of ['lightningCasts','thunderEchoEligibleCasts','thunderEchoTriggeredCasts','thunderEchoExtraHits']){
+    assert.ok(Number.isSafeInteger(m[key])&&m[key]>=0,`${label}: invalid ${key}`);
+  }
+  assert.ok(m.thunderEchoTriggeredCasts<=m.thunderEchoEligibleCasts&&m.thunderEchoEligibleCasts<=m.lightningCasts,`${label}: invalid cast counts`);
+  assert.equal(m.thunderEchoExtraHits,m.thunderEchoTriggeredCasts,`${label}: expected at most one bonus hit per cast`);
+  assert.ok(Number.isFinite(m.thunderEchoExtraDamage)&&m.thunderEchoExtraDamage>=0&&m.thunderEchoExtraDamage<=g.damage.lightning+1e-6,`${label}: invalid bonus damage`);
+  if(g.relicId!=='hourglass')assert.equal(m.thunderEchoEligibleCasts,0,`${label}: non-hourglass combo activation`);
   assert.ok(g.abilityCooldown>=0&&g.abilityCooldown<=g.ability.cooldown,`${label}: ability cooldown`);
   assert.ok(Number.isFinite(g.relicCooldown)&&g.relicCooldown>=0&&g.relicCooldown<=8,`${label}: relic cooldown`);
   if(g.rewards){
@@ -45,9 +53,10 @@ try{
       if(frame%1000===0)sampledHeap=Math.max(sampledHeap,process.memoryUsage().heapUsed);
     }
     assert.ok(g.rewards,`${classId}/${seed}: did not reach an outcome by deadline`);
-    if(g.rewards){const frozen=JSON.stringify(g);g.update(100,{x:1,y:1});assert.equal(JSON.stringify(g),frozen,'terminal state changed after update');}
-    const result={class:classId,relic:relicId,seed,status:g.status,timeSeconds:+g.time.toFixed(2),kills:g.kills,level:g.level,hp:+g.player.hp.toFixed(2),potions:g.potions,bossDefeated:g.bossDefeated,max,runtimeMs:Math.round(performance.now()-began)};
+    if(g.rewards){const frozen=JSON.stringify(g),metrics=JSON.stringify(g.spellMetrics);g.update(100,{x:1,y:1});assert.equal(JSON.stringify(g),frozen,'terminal state changed after update');assert.equal(JSON.stringify(g.spellMetrics),metrics,'terminal metrics changed after update');}
+    const result={class:classId,relic:relicId,seed,status:g.status,timeSeconds:+g.time.toFixed(2),kills:g.kills,level:g.level,hp:+g.player.hp.toFixed(2),potions:g.potions,bossDefeated:g.bossDefeated,spellMetrics:{...g.spellMetrics},max,runtimeMs:Math.round(performance.now()-began)};
     results.push(result);console.log(JSON.stringify(result));
   }
-  console.log(JSON.stringify({result:'PASS: invariants held',runs:results.length,wins:results.filter(r=>r.status==='victory').length,deaths:results.filter(r=>r.status==='dead').length,retreats:results.filter(r=>r.status==='retreat').length,observationWindowEnded:results.filter(r=>r.status==='playing').length,elapsedMs:Math.round(performance.now()-start),sampledHeapPeakMiB:+(sampledHeap/1048576).toFixed(2),limits,note:'480-second bounded run; bot death or retreat is not an invariant failure. Heap is sampled Node heap usage, not browser/device memory.'}));
+  const spellMetrics=Object.fromEntries(relics.map(relic=>[relic,results.filter(r=>r.relic===relic).reduce((sum,r)=>{for(const [key,value] of Object.entries(r.spellMetrics))sum[key]=(sum[key]??0)+value;return sum;},{})]));
+  console.log(JSON.stringify({result:'PASS: invariants held',spellMetrics,runs:results.length,wins:results.filter(r=>r.status==='victory').length,deaths:results.filter(r=>r.status==='dead').length,retreats:results.filter(r=>r.status==='retreat').length,observationWindowEnded:results.filter(r=>r.status==='playing').length,elapsedMs:Math.round(performance.now()-start),sampledHeapPeakMiB:+(sampledHeap/1048576).toFixed(2),limits,note:'480-second bounded run; bot death or retreat is not an invariant failure. Heap is sampled Node heap usage, not browser/device memory.'}));
 }catch(error){console.error('SOAK INVARIANT FAILURE:',error);process.exitCode=1;}

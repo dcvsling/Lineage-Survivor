@@ -66,6 +66,8 @@ export class Engine {
     this.status='playing'; this.time=0; this.level=1; this.xp=0; this.xpNext=12; this.kills=0; this.potions=this.relicId==='hourglass'?2:3;
     this.enemies=[];this.projectiles=[];this.pickups=[];this.effects=[];this.choices=[];
     this.upgrades=Object.fromEntries(Object.keys(UPGRADES).map(k=>[k,0])); this.damage={weapon:0,orb:0,lightning:0,ability:0};
+    // Per-run diagnostics only: not part of saves or the legacy JSON view.
+    Object.defineProperty(this,'spellMetrics',{value:{lightningCasts:0,thunderEchoEligibleCasts:0,thunderEchoTriggeredCasts:0,thunderEchoExtraHits:0,thunderEchoExtraDamage:0}});
     this.ability=Object.freeze({...ABILITIES[this.classId],cooldown:ABILITIES[this.classId].cooldown*(this.relicId==='hourglass'?.75:1)});
     // Cooldowns and active casting state belong to player ECS components.
     // Preserve legacy enumerable Engine fields, including their JSON order.
