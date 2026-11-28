@@ -22,11 +22,11 @@ export function stepPlayerSpells(game,dt){
       for(const [index,e] of targets.entries()){
         const before=game.damage.lightning;
         game.hit(e,22+game.upgrades.lightning*12,'lightning');
-        game.effect('lightning',e.x,e.y,30,'#9cbbff');
-        if(index>=baseCap){
-          const actual=game.damage.lightning-before;
-          if(actual>0){triggered=true;metrics.thunderEchoExtraHits++;metrics.thunderEchoExtraDamage+=actual;}
-        }
+        const actual=game.damage.lightning-before;
+        const bonusHit=index>=baseCap&&actual>0;
+        // Reuse the existing effect slot/lifetime; only an actual bonus hit is highlighted.
+        game.effect(bonusHit?'lightningEcho':'lightning',e.x,e.y,30,bonusHit?'#ffd45c':'#9cbbff');
+        if(bonusHit){triggered=true;metrics.thunderEchoExtraHits++;metrics.thunderEchoExtraDamage+=actual;}
       }
       if(triggered)metrics.thunderEchoTriggeredCasts++;
     }

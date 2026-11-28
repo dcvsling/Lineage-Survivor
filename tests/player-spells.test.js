@@ -98,6 +98,13 @@ test('lightning diagnostics distinguish eligible casts from actual bonus hits an
     g.update(1/30);
     assert.deepEqual(g.spellMetrics,{lightningCasts:1,thunderEchoEligibleCasts:eligible,thunderEchoTriggeredCasts:triggered,thunderEchoExtraHits:triggered,thunderEchoExtraDamage:damage},`${relic}/${rank}/${count}`);
     assert.equal(far.hp,1000);
+    const echoEffects=g.effects.filter(e=>e.type==='lightningEcho');
+    const ordinaryEffects=g.effects.filter(e=>e.type==='lightning');
+    assert.equal(echoEffects.length,triggered);
+    assert.equal(ordinaryEffects.length,Math.min(count,rank+1));
+    assert.ok(ordinaryEffects.every(e=>e.color==='#9cbbff'&&e.radius===30&&e.maxLife===.3));
+    assert.ok(echoEffects.every(e=>e.color==='#ffd45c'&&e.radius===30&&e.maxLife===.3));
+    if(triggered)assert.ok(Math.abs(echoEffects[0].x-(g.player.x+200+(rank+1)*20))<1e-8);
     assert.equal(Object.hasOwn(JSON.parse(JSON.stringify(g)),'spellMetrics'),false);
   }
 });

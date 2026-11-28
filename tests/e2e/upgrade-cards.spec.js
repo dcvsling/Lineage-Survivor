@@ -13,6 +13,17 @@ const harness = [
   '    lastStatus = "";',
   '    syncStatus();',
   '  },',
+  '  cast() {',
+  '    if (!game || game.status !== "playing") throw Error("Run is not playing");',
+  '    const advance=game.update.bind(game);game.update=()=>{};',
+  '    game.spawnTimer=game.attackTimer=game.orbTimer=100;',
+  '    game.lightningTimer=0;game.enemies=[];game.effects=[];game.projectiles=[];game.pickups=[];',
+  '    const p=game.player;',
+  '    const offsets=[[-100,0],[0,-100],[100,0],[0,100],[185,70]];',
+  '    for(const [dx,dy] of offsets){const e=game.spawn("melee");e.x=p.x+dx;e.y=p.y+dy;e.hp=e.maxHp=1000;e.speed=0;}',
+  '    advance(1/30);',
+  '    return {metrics:{...game.spellMetrics}, player:{x:p.x,y:p.y}, effects:game.effects.filter(e=>e.type==="lightning"||e.type==="lightningEcho")};',
+  '  },',
   '  snapshot() { return {status:game.status, upgrades:{...game.upgrades}}; }',
   '};'
 ].join('\n');
@@ -93,4 +104,54 @@ test('portrait and short landscape upgrade cards remain scrollable without horiz
       expect(box.x + box.width).toBeLessThanOrEqual(viewport.width + 1);
     }
   }
+});
+
+test('hourglass card explains rank-three unlock and only the real extra target gets a gold diamond on Canvas', async ({page}) => {
+  await page.setViewportSize({width:699,height:700});
+  await page.addInitScript(() => localStorage.setItem('lineage-survivor-v1', JSON.stringify({
+    version:2,equipment:{weapon:0,armor:0,boots:0},gold:0,best:60,wins:0,relic:'none'
+  })));
+  await page.route('**/main.js', async route => {
+    const response=await route.fetch();
+    await route.fulfill({response,body:(await response.text())+'\n'+harness});
+  });
+  await page.goto('/');
+  await page.locator('#relic').click();
+  const card=page.locator('.relic-grid section').filter({hasText:'回響沙漏'});
+  await expect(card).toContainText('雷霆誓約達第 3 階');
+  await expect(card).toContainText('金色菱形雷擊');
+  await card.getByRole('button',{name:'裝備回響沙漏'}).click();
+  await expect(card.getByRole('button',{name:'已裝備'})).toBeDisabled();
+  await page.getByRole('button',{name:'返回營地'}).click();
+  await page.locator('#start').click();
+  await expect(page.locator('#camp')).toBeHidden();
+  await openUpgrade(page,{lightning:2},['lightning','haste','orb']);
+  const lightning=page.locator('#modal .upgrade-options button').first();
+  await expect(lightning).toContainText('目標 3 → 5');
+  await expect(lightning).toContainText('解鎖雷霆回響（額外目標 +1，金色菱形雷擊）');
+  expect((await page.evaluate(()=>globalThis.__upgradeE2E.snapshot())).upgrades.lightning).toBe(2);
+  await lightning.click();
+  await expect(page.locator('#modal')).toBeHidden();
+  const result=await page.evaluate(()=>globalThis.__upgradeE2E.cast());
+  expect(result.metrics.thunderEchoExtraHits).toBe(1);
+  expect(result.effects.filter(e=>e.type==='lightning')).toHaveLength(4);
+  const bonus=result.effects.filter(e=>e.type==='lightningEcho');
+  expect(bonus).toHaveLength(1);
+  expect(bonus[0].x-result.player.x).toBe(185);
+  // Use actual Canvas pixels below each target: the gold diamond vertex is
+  // 36 world units down, outside the normal lightning ring and damage text.
+  const pixels=await page.evaluate(async ({player,effects})=>{
+    await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+    const canvas=document.getElementById('world'),ctx=canvas.getContext('2d');
+    return effects.map(e=>{
+      const x=Math.round(canvas.width/2+(e.x-player.x)*.60);
+      const y=Math.round(canvas.height/2+(e.y-player.y+36)*.60);
+      const data=ctx.getImageData(x-5,y-4,11,9).data;
+      let gold=0;
+      for(let i=0;i<data.length;i+=4)if(data[i]>170&&data[i+1]>125&&data[i+2]<125&&data[i]-data[i+1]>10&&data[i+1]-data[i+2]>35)gold++;
+      return {type:e.type,gold};
+    });
+  },{player:result.player,effects:result.effects});
+  expect(pixels.find(p=>p.type==='lightningEcho').gold).toBeGreaterThan(2);
+  expect(pixels.filter(p=>p.type==='lightning').every(p=>p.gold===0)).toBe(true);
 });
